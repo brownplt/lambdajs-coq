@@ -5,7 +5,6 @@
  *)
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Structures.Orders.
-Require Import Coq.Arith.NatOrderedType.
 Require Import Coq.MSets.MSetList.
 Set Implicit Arguments.
 
@@ -155,10 +154,10 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_app v e) (E_app_2 p E_hole) e
   | cxt1_succ : forall e,
       decompose1 (exp_succ e) (E_succ E_hole) e
-  | cxt1_not : forall e e',
-      decompose1 (exp_not e) (E_not E_hole) e'
-  | cxt1_if : forall e e1 e2 e',
-      decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e'
+  | cxt1_not : forall e,
+      decompose1 (exp_not e) (E_not E_hole) e
+  | cxt1_if : forall e e1 e2,
+      decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e
   | cxt1_break : forall x e,
       decompose1 (exp_break x e) (E_break x E_hole) e.
 
@@ -364,44 +363,53 @@ Proof. intros. inversion H; auto using lc_val. Qed.
 
 Hint Resolve lc_active.
 
-Lemma lc_open : forall k e u x,
-  lc (open_rec k (exp_var x) e) ->
-  lc u ->
-  lc (open_rec k u e).
+Lemma lc_open : forall e u u' k,
+  lc u -> lc u' -> 
+  lc (open_rec k u e) ->
+  lc (open_rec k u' e).
 Proof with auto.
-intros.
-generalize dependent k. generalize dependent u.
 induction e; intros; simpl...
-simpl in H.
-destruct (beq_nat k n)...
-simpl in H.
-inversion H; subst.
+simpl in H1. destruct (beq_nat k n)...
+simpl in H1.
+inversion H1; subst.
 eapply lc_abs with L.
 intros.
-unfold open. 
-unfold open in H2.
-assert (E := H2 x0 H1).
+unfold open in *.
+assert (E := (H3 x H2)).
 admit.
 
+inversion H1; subst. constructor. apply IHe1 with u; auto. apply IHe2 with u; auto.
+inversion H1; subst. constructor. apply IHe with u; auto.
+inversion H1; subst. constructor. apply IHe with u; auto.
+inversion H1; subst. constructor. apply IHe1 with u; auto. apply IHe2 with u; auto. apply IHe3 with u; auto.
+inversion H1; subst. constructor. apply IHe with u; auto.
+inversion H1; subst. constructor. apply IHe with u; auto.
+Qed.
+
+Lemma fresh_atom_for : forall (L : list atom), (exists x, ~ In x L).
+Proof. intros. apply Atom.atom_fresh_for_list. Qed.
 
 Lemma lc_contract : forall ae e,
+  pot_redex ae ->
   lc ae ->
   contract ae e ->
   lc e.
 Proof with auto.
 intros.
-destruct H0...
+destruct H1...
 simpl. destruct e; auto.
 simpl. destruct e; auto.
-inversion H...
-inversion H...
-inversion H; subst.
-unfold open.
-inversion H3; subst.
-unfold open in *.
-
-
-Admitted.
+inversion H0...
+inversion H0...
+inversion H0; subst.
+inversion H4.
+assert (X := fresh_atom_for L). inversion X.
+apply lc_open with (exp_var x)... apply H3...
+apply lc_val... 
+inversion H1; subst; inversion H; try solve [apply lc_val; eauto]. subst. constructor. apply lc_val...
+inversion H. inversion H2.
+inversion H. inversion H3.
+Qed.
 
 Lemma preservation : forall e1 e2,
   lc e1 ->
@@ -410,10 +418,10 @@ Lemma preservation : forall e1 e2,
 Proof with auto.
 intros.
 destruct H0. auto.
-assert (pot_redex ae). apply decompose_pot_redex with (e := e) (E := E0)...
-apply lc_active in H3.
-apply lc_contract in H2...
-apply lc_plug with (ae := ae) (e := e)...
+apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
+apply decompose_pot_redex with (e := e) (E := E0)...
+apply lc_active. 
+apply decompose_pot_redex with (e := e) (E := E0)...
 Qed.
 
 
