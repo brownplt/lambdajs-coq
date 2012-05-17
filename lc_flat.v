@@ -232,21 +232,11 @@ Lemma decomp : forall e,
           (exists E, exists ae, decompose e E ae).
 Proof with eauto.
 intros.
-induction H; intros...
+induction H; intros; try solve_decomp...
 (* exp_app *)
 destruct IHlc1; right...  destruct IHlc2...
 destruct_decomp e2. exists (E_app_2 H1 E)...
 destruct_decomp e1. exists (E_app_1 E e2)...
-(* exp_succ *)
-solve_decomp.
-(* exp_not *)
-solve_decomp.
-(* exp_if *)
-solve_decomp.
-(* exp_label *)
-solve_decomp.
-(* exp_break *)
-solve_decomp.
 Qed.
 
 Hint Resolve decompose_lc.
@@ -264,6 +254,6 @@ destruct_decomp e...
 right.
 assert (pot_redex ae). apply decompose_pot_redex in H...
 inversion H0; subst; 
-  solve [ inversion H1; subst; solve [destruct b; eauto | eauto]
+  first [ inversion H1; subst; first [destruct b; eauto | eauto]
     | eauto ].
 Qed.
