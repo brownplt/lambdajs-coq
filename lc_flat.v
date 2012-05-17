@@ -257,3 +257,22 @@ inversion H0; subst;
   first [ inversion H1; subst; first [destruct b; eauto | eauto]
     | eauto ].
 Qed.
+
+Ltac solve_lc_plug := match goal with
+  | [ IHdecompose : lc ?e -> lc (plug ?e' ?E),
+      H : lc ?e
+      |- context [plug ?e' ?E] ]
+    => (apply IHdecompose in H; auto)
+end.
+
+Lemma lc_plug : forall E ae e e',
+  lc e ->
+  lc e' ->
+  decompose e E ae ->
+  lc (plug e' E).
+Proof.
+intros.
+induction H1; first [ inversion H; subst; simpl; solve_lc_plug | auto ].
+Qed.
+
+Hint Resolve lc_plug.
