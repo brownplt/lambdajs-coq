@@ -61,7 +61,7 @@ Inductive lc : exp -> Prop :=
 
 Inductive val : exp -> Prop :=
   | val_var : forall x, val (exp_var x)
-  | val_abs : forall e, val (exp_abs e)
+  | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
   | val_bool : forall b, val (exp_bool b).
 
@@ -75,12 +75,12 @@ Inductive E : Set :=
   | E_label : atom -> E -> E
   | E_break : atom -> E -> E.
 
-
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
   | redex_succ : forall e, val e -> pot_redex (exp_succ e)
   | redex_not  : forall e, val e -> pot_redex (exp_not e)
-  | redex_if   : forall e e1 e2, val e -> pot_redex (exp_if e e1 e2)
+  | redex_if   : forall e e1 e2, 
+      val e -> lc e1 -> lc e2 -> pot_redex (exp_if e e1 e2)
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
   | redex_break : forall x v, val v -> pot_redex (exp_break x v).
@@ -275,3 +275,41 @@ induction H1; first [ inversion H; subst; simpl; solve_lc_plug | auto ].
 Qed.
 
 Hint Resolve lc_plug.
+
+Lemma lc_val : forall v,
+  val v -> lc v.
+Proof with auto.
+intros. inversion H... Qed.
+
+Lemma lc_active : forall e,
+  pot_redex e -> lc e.
+Proof. intros. inversion H; auto using lc_val. Qed.
+
+Hint Resolve lc_active.
+
+Lemma lc_contract : forall ae e,
+  lc ae ->
+  contract ae e ->
+  lc e.
+Proof with auto.
+intros.
+destruct H0...
+simpl. destruct e; auto.
+simpl. destruct e; auto.
+inversion H...
+inversion H...
+inversion H; subst.
+Admitted.
+
+Lemma preservation : forall e1 e2,
+  lc e1 ->
+  step e1 e2 ->
+  lc e2.
+Proof with auto.
+intros.
+destruct H0. auto.
+assert (pot_redex ae). apply decompose_pot_redex with (e := e) (E := E0)...
+apply lc_active in H3.
+apply lc_contract in H2...
+apply lc_plug with (ae := ae) (e := e)...
+Qed.
