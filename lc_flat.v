@@ -48,7 +48,7 @@ Definition open e u := open_rec 0 u e.
 (* locally closed : all de Brujin indices are bound *)
 Inductive lc : exp -> Prop :=
   | lc_var  : forall x, lc (exp_var x)
-  | lc_abs  : forall x e, lc (open e x) -> lc (exp_abs e)
+  | lc_abs  : forall e, (forall x, lc (open e (exp_var x))) -> lc (exp_abs e)
   | lc_app  : forall e1 e2, lc e1 -> lc e2 -> lc (exp_app e1 e2)
   | lc_nat  : forall n, lc (exp_nat n)
   | lc_succ : forall e, lc e -> lc (exp_succ e)
@@ -58,7 +58,6 @@ Inductive lc : exp -> Prop :=
   | lc_err  : lc exp_err
   | lc_label : forall x e, lc e -> lc (exp_label x e)
   | lc_break : forall x e, lc e -> lc (exp_break x e).
-
 
 Inductive val : exp -> Prop :=
   | val_var : forall x, val (exp_var x)
