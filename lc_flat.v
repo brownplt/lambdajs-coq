@@ -4,11 +4,25 @@
  * Authors: Arjun Guha <arjun@cs.brown.edu>
  *)
 Require Import Coq.Arith.EqNat.
+Require Import Coq.Structures.Orders.
+Require Import Coq.Arith.NatOrderedType.
+Require Import Coq.MSets.MSetList.
 Set Implicit Arguments.
 
-Parameter atom : Set. (* free variables *)
+Module Type ATOM.
 
-Axiom atom_eqdec : forall (x y : atom), { x = y } + { x <> y }.
+  Parameter atom : Set.
+  Declare Module Atom_as_OT : UsualOrderedType with Definition t := atom.
+  Parameter atom_fresh_for_list :
+    forall (xs : list atom), exists x : atom, ~ List.In x xs.
+
+End ATOM.
+
+Module LC (Import Atom : ATOM).
+
+Module Atoms := Coq.MSets.MSetList.Make (Atom.Atom_as_OT).
+
+Definition atom := Atom.atom. (* free variables *)
 
 Section Definitions.
 
@@ -45,10 +59,30 @@ end.
 
 Definition open e u := open_rec 0 u e.
 
+
+Fixpoint subst (z : atom) (u : exp) (e : exp) := match e with
+  | exp_var y     => if Atom.Atom_as_OT.eq_dec z y then u else e
+  | exp_bvar _    => e
+  | exp_abs  e    => exp_abs (subst z u e)
+  | exp_app e1 e2 => exp_app (subst z u e1) (subst z u e2)
+  | exp_nat n     => e
+  | exp_succ e    => exp_succ (subst z u e)
+  | exp_bool b     => e
+  | exp_not e      => exp_not (subst z u e)
+  | exp_if e e1 e2 => exp_if (subst z u e) (subst z u e1) (subst z u e2)
+  | exp_err       => e
+  | exp_label x e => exp_label x (subst z u e)
+  | exp_break x e => exp_break x (subst z u e)
+end.
+
+Notation "e [ x / u ]" := (subst x u e) (at level 68).
+
 (* locally closed : all de Brujin indices are bound *)
 Inductive lc : exp -> Prop :=
   | lc_var  : forall x, lc (exp_var x)
-  | lc_abs  : forall e, (forall x, lc (open e (exp_var x))) -> lc (exp_abs e)
+  | lc_abs  : forall e L,
+    (forall x, (~ In x L) -> lc (open e (exp_var x)))
+    -> lc (exp_abs e)
   | lc_app  : forall e1 e2, lc e1 -> lc e2 -> lc (exp_app e1 e2)
   | lc_nat  : forall n, lc (exp_nat n)
   | lc_succ : forall e, lc e -> lc (exp_succ e)
@@ -193,6 +227,49 @@ Hint Constructors decompose E val exp pot_redex exp val pot_redex lc contract
                   step decompose1.
 Hint Unfold open.
 
+Lemma open_rec_lc_core : forall e v i j u,
+  i <> j ->
+  open_rec j v e = open_rec i u (open_rec j v e) ->
+  e = open_rec i u e.
+Proof with eauto.
+  induction e; intros; simpl in *; try solve [ inversion H0; f_equal; eauto].
+  remember (beq_nat j n).
+  destruct b...
+  remember (beq_nat i n).
+  destruct b...
+  apply beq_nat_eq in Heqb.
+  apply beq_nat_eq in Heqb0.
+  contradiction H. clear H0. subst. auto.
+Qed.
+
+Lemma open_rec_lc : forall k u e,
+  lc e ->
+  e = open_rec k u e.
+Proof with auto.
+  intros.
+  generalize dependent k.
+  induction H...
+  simpl.
+  intros.
+  unfold open in *.
+  f_equal.
+  assert (exists x : atom, ~ In x L).
+    apply Atom.atom_fresh_for_list.
+  inversion H1.
+  apply open_rec_lc_core with (i := S k) (j := 0) (u := u) (v := exp_var x).
+  auto with arith.  
+  auto.  
+
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. auto.
+  intros. simpl. f_equal. auto. 
+Qed.
+
+
 Lemma decompose_pot_redex : forall e E ae,
   decompose e E ae -> pot_redex ae.
 Proof with auto. intros. induction H... Qed.
@@ -287,6 +364,26 @@ Proof. intros. inversion H; auto using lc_val. Qed.
 
 Hint Resolve lc_active.
 
+Lemma lc_open : forall k e u x,
+  lc (open_rec k (exp_var x) e) ->
+  lc u ->
+  lc (open_rec k u e).
+Proof with auto.
+intros.
+generalize dependent k. generalize dependent u.
+induction e; intros; simpl...
+simpl in H.
+destruct (beq_nat k n)...
+simpl in H.
+inversion H; subst.
+eapply lc_abs with L.
+intros.
+unfold open. 
+unfold open in H2.
+assert (E := H2 x0 H1).
+admit.
+
+
 Lemma lc_contract : forall ae e,
   lc ae ->
   contract ae e ->
@@ -299,6 +396,11 @@ simpl. destruct e; auto.
 inversion H...
 inversion H...
 inversion H; subst.
+unfold open.
+inversion H3; subst.
+unfold open in *.
+
+
 Admitted.
 
 Lemma preservation : forall e1 e2,
@@ -313,3 +415,6 @@ apply lc_active in H3.
 apply lc_contract in H2...
 apply lc_plug with (ae := ae) (e := e)...
 Qed.
+
+
+End LC.
