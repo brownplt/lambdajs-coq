@@ -19,6 +19,9 @@ Inductive exp : Set :=
   | exp_app  : exp -> exp -> exp
   | exp_nat  : nat -> exp
   | exp_succ : exp -> exp
+  | exp_bool : bool -> exp
+  | exp_not  : exp -> exp
+  | exp_if   : exp -> exp -> exp -> exp
   | exp_err  : exp
   | exp_label : atom -> exp -> exp
   | exp_break : atom -> exp -> exp.
@@ -32,6 +35,9 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_app e1 e2 => exp_app (open_rec k u e1) (open_rec k u e2)
   | exp_nat n     => e
   | exp_succ e    => exp_succ (open_rec k u e)
+  | exp_bool b     => e
+  | exp_not e      => exp_not (open_rec k u e)
+  | exp_if e e1 e2 => exp_if (open_rec k u e) (open_rec k u e1) (open_rec k u e2)
   | exp_err       => e
   | exp_label x e => exp_label x (open_rec k u e)
   | exp_break x e => exp_break x (open_rec k u e)
@@ -46,6 +52,9 @@ Inductive lc : exp -> Prop :=
   | lc_app  : forall e1 e2, lc e1 -> lc e2 -> lc (exp_app e1 e2)
   | lc_nat  : forall n, lc (exp_nat n)
   | lc_succ : forall e, lc e -> lc (exp_succ e)
+  | lc_bool : forall b, lc (exp_bool b)
+  | lc_not  : forall e, lc e -> lc (exp_not e)
+  | lc_if   : forall e e1 e2, lc e -> lc e1 -> lc e2 -> lc (exp_if e e1 e2)
   | lc_err  : lc exp_err
   | lc_label : forall x e, lc e -> lc (exp_label x e)
   | lc_break : forall x e, lc e -> lc (exp_break x e).
@@ -54,13 +63,16 @@ Inductive lc : exp -> Prop :=
 Inductive val : exp -> Prop :=
   | val_var : forall x, val (exp_var x)
   | val_abs : forall e, val (exp_abs e)
-  | val_nat : forall n, val (exp_nat n).
+  | val_nat : forall n, val (exp_nat n)
+  | val_bool : forall b, val (exp_bool b).
 
 Inductive E : Set :=
   | E_hole  : E
   | E_app_1 : E -> exp -> E
   | E_app_2 : forall (v : exp), val v -> E -> E
   | E_succ  : E -> E
+  | E_not   : E -> E
+  | E_if    : E -> exp -> exp -> E
   | E_label : atom -> E -> E
   | E_break : atom -> E -> E.
 
@@ -68,6 +80,8 @@ Inductive E : Set :=
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
   | redex_succ : forall e, val e -> pot_redex (exp_succ e)
+  | redex_not  : forall e, val e -> pot_redex (exp_not e)
+  | redex_if   : forall e e1 e2, val e -> pot_redex (exp_if e e1 e2)
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
   | redex_break : forall x v, val v -> pot_redex (exp_break x v).
@@ -85,6 +99,12 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_succ : forall E e e',
       decompose e E e' ->
       decompose (exp_succ e) (E_succ E) e'
+  | cxt_not : forall E e e',
+      decompose e E e' ->
+      decompose (exp_not e) (E_not E) e'
+  | cxt_if : forall E e e1 e2 e',
+      decompose e E e' ->
+      decompose (exp_if e e1 e2) (E_if E e1 e2) e'
   | cxt_break : forall x e E ae,
       decompose e E ae ->
       decompose (exp_break x e) (E_break x E) ae
@@ -102,6 +122,10 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_app v e) (E_app_2 p E_hole) e
   | cxt1_succ : forall e,
       decompose1 (exp_succ e) (E_succ E_hole) e
+  | cxt1_not : forall e e',
+      decompose1 (exp_not e) (E_not E_hole) e'
+  | cxt1_if : forall e e1 e2 e',
+      decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e'
   | cxt1_break : forall x e,
       decompose1 (exp_break x e) (E_break x E_hole) e.
 
@@ -110,22 +134,37 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_app_1 cxt e2 => exp_app (plug e cxt) e2
   | E_app_2 v pf cxt => exp_app v (plug e cxt)
   | E_succ cxt => exp_succ (plug e cxt)
+  | E_not cxt => exp_not (plug e cxt)
+  | E_if cxt e1 e2 => exp_if (plug e cxt) e1 e2
   | E_label x cxt => exp_label x (plug e cxt)
   | E_break x cxt => exp_break x (plug e cxt)
 end.
 
+Fixpoint delta exp := match exp with
+  | exp_succ (exp_nat n) => exp_nat (S n)
+  | exp_not (exp_bool b) => exp_bool (negb b)
+  | _                    => exp_err
+end.
+
 Inductive contract :  exp -> exp -> Prop := 
-  | contract_succ : forall n, contract (exp_succ (exp_nat n)) (exp_nat (S n))
+  | contract_succ : forall e, contract (exp_succ e) (delta (exp_succ e))
+  | contract_not  : forall e, contract (exp_not e) (delta (exp_not e))
+  | contract_if1  : forall e1 e2, contract (exp_if (exp_bool true) e1 e2) e1
+  | contract_if2  : forall e1 e2, contract (exp_if (exp_bool false) e1 e2) e2
   | contract_app  : forall e v, 
       val v -> contract (exp_app (exp_abs e) v) (open e v)
-  | contract_err1 : forall n v,
+  | contract_err_app1 : forall n v,
       val v -> contract (exp_app (exp_nat n) v) exp_err
-  | contract_err2 : forall x v,
+  | contract_err_app2 : forall x v,
       val v -> contract (exp_app (exp_var x) v) exp_err
-  | contract_err3 : forall e,
-      contract (exp_succ (exp_abs e)) exp_err
-  | contract_err4 : forall x,
-      contract (exp_succ (exp_var x)) exp_err
+  | contract_err_app3 : forall b v,
+      val v -> contract (exp_app (exp_bool b) v) exp_err
+  | contract_err_if1 : forall e e1 e2,
+      contract (exp_if (exp_abs e) e1 e2) exp_err
+  | contract_err_if2 : forall x e1 e2,
+      contract (exp_if (exp_var x) e1 e2) exp_err
+  | contract_err_if3 : forall n e1 e2,
+      contract (exp_if (exp_nat n) e1 e2) exp_err
   | contract_label : forall x v,
       val v -> contract (exp_label x v) v
   | contract_break_bubble : forall x v E e,
@@ -193,13 +232,16 @@ Lemma decomp : forall e,
           (exists E, exists ae, decompose e E ae).
 Proof with eauto.
 intros.
-induction H...
+induction H; intros...
 (* exp_app *)
-destruct IHlc1; destruct IHlc2; right...
+destruct IHlc1; right...  destruct IHlc2...
 destruct_decomp e2. exists (E_app_2 H1 E)...
 destruct_decomp e1. exists (E_app_1 E e2)...
-destruct_decomp e1. exists (E_app_1 E e2)...
 (* exp_succ *)
+solve_decomp.
+(* exp_not *)
+solve_decomp.
+(* exp_if *)
 solve_decomp.
 (* exp_label *)
 solve_decomp.
@@ -221,5 +263,7 @@ destruct H...
 destruct_decomp e...
 right.
 assert (pot_redex ae). apply decompose_pot_redex in H...
-inversion H0; (eauto || inversion H1; subst; eauto).
+inversion H0; subst; 
+  solve [ inversion H1; subst; solve [destruct b; eauto | eauto]
+    | eauto ].
 Qed.
