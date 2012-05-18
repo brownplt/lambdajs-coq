@@ -9,7 +9,9 @@ Require Import Coq.Arith.EqNat.
 Require Import Coq.Arith.Le.
 Require Import Coq.Arith.Lt.
 Require Import Coq.Structures.Orders.
+Require Import Coq.Structures.OrderedType.
 Require Import Coq.MSets.MSetList.
+Require Import Coq.FSets.FMapList.
 Require Import Omega.
 Require Import SfLib.
 Set Implicit Arguments.
@@ -18,14 +20,18 @@ Module Type ATOM.
 
   Parameter atom : Set.
   Declare Module Atom_as_OT : UsualOrderedType with Definition t := atom.
+  Declare Module Ordered : Coq.Structures.OrderedType.OrderedType 
+    with Definition t := atom.
 
 End ATOM.
 
 Module LC (Import Atom : ATOM).
 
 Module Atoms := Coq.MSets.MSetList.Make (Atom.Atom_as_OT).
+Module AtomEnv := Coq.FSets.FMapList.Make (Atom.Ordered).
 
 Definition atom := Atom.atom. (* free variables *)
+Definition loc := Atom.atom.
 
 Section Definitions.
 
@@ -42,6 +48,11 @@ Inductive exp : Set :=
   | exp_err  : exp
   | exp_label : atom -> exp -> exp
   | exp_break : atom -> exp -> exp.
+(*
+  | exp_loc   : loc -> exp
+  | exp_deref : exp -> exp
+  | exp_ref   : exp -> exp
+  | exp_set   : exp -> exp -> exp. *)
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -59,6 +70,12 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_label x e => exp_label x (open_rec k u e)
   | exp_break x e => exp_break x (open_rec k u e)
 end.
+(*
+  | exp_loc _     => e
+  | exp_deref e   => exp_deref (open_rec k u e)
+  | exp_ref e     => exp_ref (open_rec k u e)
+  | exp_set e1 e2 => exp_set (open_rec k u e1) (open_rec k u e2)
+end. *)
 
 Definition open e u := open_rec 0 u e.
 
@@ -78,15 +95,43 @@ Inductive lc' : nat -> exp -> Prop :=
   | lc_err   : forall n, lc' n exp_err
   | lc_label : forall n x e, lc' n e -> lc' n (exp_label x e)
   | lc_break : forall n x e, lc' n e -> lc' n (exp_break x e).
+(*
+  | lc_loc   : forall n x, lc' n (exp_loc x)
+  | lc_ref   : forall n e, lc' n e -> lc' n (exp_ref e)
+  | lc_deref : forall n e, lc' n e -> lc' n (exp_deref e)
+  | lc_set   : forall n e1 e2, lc' n e1 -> lc' n e2 -> lc' n (exp_set e1 e2).
+*)
 
 Definition lc e := lc' 0 e.
-
 
 Inductive val : exp -> Prop :=
   | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
   | val_fvar : forall a, val (exp_fvar a)
   | val_bool : forall b, val (exp_bool b).
+(*  | val_loc  : forall l, val (exp_loc l). *)
+
+Inductive tag : Set :=
+  | TagAbs : tag
+  | TagNat : tag
+  | TagVar : tag
+  | TagBool : tag.
+
+Inductive tagof : exp -> tag -> Prop :=
+  | tag_abs  : forall e, tagof (exp_abs e) TagAbs
+  | tag_nat  : forall n, tagof (exp_nat n) TagNat
+  | tag_var  : forall x, tagof (exp_fvar x) TagVar
+  | tag_bool : forall b, tagof (exp_bool b) TagBool.
+
+Require Import Coq.Logic.Decidable.
+
+Hint Constructors tagof tag.
+Lemma decide_tagof : forall e t, { tagof e t } + { ~ tagof e t }.
+Proof.
+  intros.
+  unfold not.
+  destruct e; destruct t; try solve  [ auto | right; intros; inversion H ].
+Qed.
 
 Inductive E : Set :=
   | E_hole  : E
@@ -97,7 +142,10 @@ Inductive E : Set :=
   | E_if    : E -> exp -> exp -> E
   | E_label : atom -> E -> E
   | E_break : atom -> E -> E.
-
+(*  | E_ref   : E -> E
+  | E_deref : E -> E
+  | E_setref1 : E -> exp -> E
+  | E_setref2 : forall (v : exp), val v -> E -> E. *)
 
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
@@ -108,6 +156,11 @@ Inductive pot_redex : exp -> Prop :=
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
   | redex_break : forall x v, val v -> pot_redex (exp_break x v).
+(*
+  | redex_ref   : forall v, val v -> pot_redex (exp_ref v)
+  | redex_deref : forall v, val v -> pot_redex (exp_deref v)
+  |  *)
+
 
 Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -176,18 +229,15 @@ Inductive contract :  exp -> exp -> Prop :=
   | contract_if2  : forall e1 e2, contract (exp_if (exp_bool false) e1 e2) e2
   | contract_app  : forall e v, 
       val v -> contract (exp_app (exp_abs e) v) (open e v)
-  | contract_err_app1 : forall n v,
-      val v -> contract (exp_app (exp_nat n) v) exp_err
-  | contract_err_app2 : forall a v,
-      val v -> contract (exp_app (exp_fvar a) v) exp_err
-  | contract_err_app3 : forall b v,
-      val v -> contract (exp_app (exp_bool b) v) exp_err
-  | contract_err_if1 : forall e e1 e2,
-      contract (exp_if (exp_abs e) e1 e2) exp_err
-  | contract_err_if2 : forall a e1 e2,
-      contract (exp_if (exp_fvar a) e1 e2) exp_err
-  | contract_err_if3 : forall n e1 e2,
-      contract (exp_if (exp_nat n) e1 e2) exp_err
+  | contract_app_err : forall v1 v2,
+      val v1 ->
+      val v2 ->
+      ~ tagof v1 TagAbs ->
+      contract (exp_app v1 v2) exp_err
+  | contract_if_err : forall v1 e2 e3,
+      val v1 ->
+      ~ tagof v1 TagBool ->
+      contract (exp_if v1 e2 e3) exp_err
   | contract_label : forall x v,
       val v -> contract (exp_label x v) v
   | contract_break_bubble : forall x v E e,
@@ -212,6 +262,7 @@ Inductive step : exp -> exp -> Prop :=
     step e (plug e' E).
 
 End Definitions.
+
 Tactic Notation "exp_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "exp_fvar"
@@ -291,12 +342,8 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_if1"
     | Case_aux c "contract_if2"
     | Case_aux c "contract_app"
-    | Case_aux c "contract_err_app_1"
-    | Case_aux c "contract_err_app_2"
-    | Case_aux c "contract_err_app_3"
-    | Case_aux c "contract_err_if1"
-    | Case_aux c "contract_err_if2"
-    | Case_aux c "contract_err_if3"
+    | Case_aux c "contract_app_err"
+    | Case_aux c "contract_if_err"
     | Case_aux c "contract_label"
     | Case_aux c "contract_break_bubble"
     | Case_aux c "contract_break_match"
@@ -372,6 +419,12 @@ Case "lc_app".
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
+Hint Unfold not.
+
+(* Invert tagof *)
+Hint Extern 1 ( False ) => match goal with
+  | [ H: tagof _ _ |- False]  => inversion H
+end.
 
 Lemma progress : forall e,
   lc e ->
@@ -502,6 +555,5 @@ Case "step_contract".
   apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
   apply lc_active. apply decompose_pot_redex with (e := e) (E := E0)...
 Qed.
-
 
 End LC.
