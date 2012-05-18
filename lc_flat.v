@@ -319,13 +319,13 @@ Lemma decompose_lc : forall E e ae,
   lc e ->
   decompose e E ae ->
   lc ae.
-Proof. intros. induction H0; inversion H; eauto. Qed.
+Proof. intros. decompose_cases (induction H0) Case; inversion H; eauto. Qed.
 
 Lemma decompose1_lc : forall E e ae,
   lc e ->
   decompose1 e E ae ->
   lc ae.
-Proof. intros. decompose1_cases (induction H0) Case; try (inversion H; eauto). Qed.
+Proof. intros. decompose1_cases (induction H0) Case; inversion H; eauto. Qed.
 
 Ltac solve_decomp' := match goal with
   | [ H1 : lc' 0 ?e,
@@ -457,8 +457,8 @@ Lemma lc_contract : forall ae e,
 Proof with auto.
 intros.
 contract_cases (destruct H0) Case...
-Case "contract_succ". simpl. destruct e; auto.
-Case "contract_not". simpl. destruct e; auto.
+Case "contract_succ". simpl. exp_cases (destruct e) SCase; auto.
+Case "contract_not". simpl. exp_cases (destruct e) SCase; auto.
 Case "contract_if1". inversion H...
 Case "contract_if2". inversion H...
 Case "contract_app".
@@ -484,7 +484,8 @@ Lemma preservation : forall e1 e2,
 Proof with auto.
 intros.
 unfold lc in *.
-step_cases (destruct H0) Case. Case "step_err"; auto.
+step_cases (destruct H0) Case. 
+Case "step_err"; auto.
 Case "step_contract".
   apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
   apply lc_active. apply decompose_pot_redex with (e := e) (E := E0)...
