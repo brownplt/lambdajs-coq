@@ -276,7 +276,10 @@ Inductive contract :  exp -> exp -> Prop :=
   | contract_deref_err : forall v,
       val v ->
       ~ tagof v TagLoc ->
-      contract (exp_deref v) exp_err.
+      contract (exp_deref v) exp_err
+  | contract_err_bubble : forall e E,
+      decompose e E exp_err ->
+      contract e exp_err.
 
 Inductive stored_val : Set :=
   | val_with_proof : forall (v : exp), val v -> stored_val.
@@ -432,7 +435,8 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_break_match"
     | Case_aux c "contract_break_mismatch"
     | Case_aux c "contract_set_err"
-    | Case_aux c "contract_deref_err" ].
+    | Case_aux c "contract_deref_err"
+    | Case_aux c "contract_err_bubble" ].
 Tactic Notation "step_cases" tactic(first) ident(c) :=
   first;
   [ Case_aux c "step_err"
