@@ -30,6 +30,7 @@ Definition atom := Atom.atom. (* free variables *)
 Section Definitions.
 
 Inductive exp : Set :=
+  | exp_fvar : atom -> exp
   | exp_bvar : nat -> exp (* bound variables as de Brujin indices *)
   | exp_abs  : exp -> exp
   | exp_app  : exp -> exp -> exp
@@ -45,6 +46,7 @@ Inductive exp : Set :=
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
+  | exp_fvar a    => e
   | exp_bvar n    => if beq_nat k n then u else e
   | exp_abs  e    => exp_abs (open_rec (S k) u e)
   | exp_app e1 e2 => exp_app (open_rec k u e1) (open_rec k u e2)
@@ -62,6 +64,7 @@ Definition open e u := open_rec 0 u e.
 
 (* locally closed : all de Brujin indices are bound *)
 Inductive lc' : nat -> exp -> Prop :=
+  | lc_fvar : forall n a, lc' n (exp_fvar a)
   | lc_bvar : forall k n, k < n -> lc' n (exp_bvar k)
   | lc_abs  : forall n e,
       lc' (S n) e -> lc' n (exp_abs e)
@@ -82,6 +85,7 @@ Definition lc e := lc' 0 e.
 Inductive val : exp -> Prop :=
   | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
+  | val_fvar : forall a, val (exp_fvar a)
   | val_bool : forall b, val (exp_bool b).
 
 Inductive E : Set :=
@@ -174,10 +178,14 @@ Inductive contract :  exp -> exp -> Prop :=
       val v -> contract (exp_app (exp_abs e) v) (open e v)
   | contract_err_app1 : forall n v,
       val v -> contract (exp_app (exp_nat n) v) exp_err
+  | contract_err_app2 : forall a v,
+      val v -> contract (exp_app (exp_fvar a) v) exp_err
   | contract_err_app3 : forall b v,
       val v -> contract (exp_app (exp_bool b) v) exp_err
   | contract_err_if1 : forall e e1 e2,
       contract (exp_if (exp_abs e) e1 e2) exp_err
+  | contract_err_if2 : forall a e1 e2,
+      contract (exp_if (exp_fvar a) e1 e2) exp_err
   | contract_err_if3 : forall n e1 e2,
       contract (exp_if (exp_nat n) e1 e2) exp_err
   | contract_label : forall x v,
@@ -206,7 +214,8 @@ Inductive step : exp -> exp -> Prop :=
 End Definitions.
 Tactic Notation "exp_cases" tactic(first) ident(c) :=
   first;
-    [ Case_aux c "exp_bvar"
+    [ Case_aux c "exp_fvar"
+    | Case_aux c "exp_bvar"
     | Case_aux c "exp_abs"
     | Case_aux c "exp_app"
     | Case_aux c "exp_nat"
@@ -219,7 +228,8 @@ Tactic Notation "exp_cases" tactic(first) ident(c) :=
     | Case_aux c "exp_break" ].
 Tactic Notation "lc_cases" tactic(first) ident(c) :=
   first;
-    [ Case_aux c "lc_bvar"
+    [ Case_aux c "lc_fvar"
+    | Case_aux c "lc_bvar"
     | Case_aux c "lc_abs"
     | Case_aux c "lc_app"
     | Case_aux c "lc_nat"
@@ -232,9 +242,9 @@ Tactic Notation "lc_cases" tactic(first) ident(c) :=
     | Case_aux c "lc_break" ].
 Tactic Notation "val_cases" tactic(first) ident(c) :=
   first;
-    [ Case_aux c "val_var"
-    | Case_aux c "val_abs"
+    [ Case_aux c "val_abs"
     | Case_aux c "val_nat"
+    | Case_aux c "val_fvar"
     | Case_aux c "val_bool" ].
 Tactic Notation "E_cases" tactic(first) ident(c) :=
   first;
@@ -282,8 +292,10 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_if2"
     | Case_aux c "contract_app"
     | Case_aux c "contract_err_app_1"
+    | Case_aux c "contract_err_app_2"
     | Case_aux c "contract_err_app_3"
     | Case_aux c "contract_err_if1"
+    | Case_aux c "contract_err_if2"
     | Case_aux c "contract_err_if3"
     | Case_aux c "contract_label"
     | Case_aux c "contract_break_bubble"
