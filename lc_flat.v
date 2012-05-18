@@ -47,12 +47,11 @@ Inductive exp : Set :=
   | exp_if   : exp -> exp -> exp -> exp
   | exp_err  : exp
   | exp_label : atom -> exp -> exp
-  | exp_break : atom -> exp -> exp.
-(*
+  | exp_break : atom -> exp -> exp
   | exp_loc   : loc -> exp
   | exp_deref : exp -> exp
   | exp_ref   : exp -> exp
-  | exp_set   : exp -> exp -> exp. *)
+  | exp_set   : exp -> exp -> exp.
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -69,13 +68,11 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_err       => e
   | exp_label x e => exp_label x (open_rec k u e)
   | exp_break x e => exp_break x (open_rec k u e)
-end.
-(*
   | exp_loc _     => e
   | exp_deref e   => exp_deref (open_rec k u e)
   | exp_ref e     => exp_ref (open_rec k u e)
   | exp_set e1 e2 => exp_set (open_rec k u e1) (open_rec k u e2)
-end. *)
+end.
 
 Definition open e u := open_rec 0 u e.
 
@@ -94,13 +91,11 @@ Inductive lc' : nat -> exp -> Prop :=
       lc' n e -> lc' n e1 -> lc' n e2 -> lc' n (exp_if e e1 e2)
   | lc_err   : forall n, lc' n exp_err
   | lc_label : forall n x e, lc' n e -> lc' n (exp_label x e)
-  | lc_break : forall n x e, lc' n e -> lc' n (exp_break x e).
-(*
+  | lc_break : forall n x e, lc' n e -> lc' n (exp_break x e)
   | lc_loc   : forall n x, lc' n (exp_loc x)
   | lc_ref   : forall n e, lc' n e -> lc' n (exp_ref e)
   | lc_deref : forall n e, lc' n e -> lc' n (exp_deref e)
   | lc_set   : forall n e1 e2, lc' n e1 -> lc' n e2 -> lc' n (exp_set e1 e2).
-*)
 
 Definition lc e := lc' 0 e.
 
@@ -108,20 +103,22 @@ Inductive val : exp -> Prop :=
   | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
   | val_fvar : forall a, val (exp_fvar a)
-  | val_bool : forall b, val (exp_bool b).
-(*  | val_loc  : forall l, val (exp_loc l). *)
+  | val_bool : forall b, val (exp_bool b)
+  | val_loc  : forall l, val (exp_loc l).
 
 Inductive tag : Set :=
   | TagAbs : tag
   | TagNat : tag
   | TagVar : tag
-  | TagBool : tag.
+  | TagBool : tag
+  | TagLoc : tag.
 
 Inductive tagof : exp -> tag -> Prop :=
   | tag_abs  : forall e, tagof (exp_abs e) TagAbs
   | tag_nat  : forall n, tagof (exp_nat n) TagNat
   | tag_var  : forall x, tagof (exp_fvar x) TagVar
-  | tag_bool : forall b, tagof (exp_bool b) TagBool.
+  | tag_bool : forall b, tagof (exp_bool b) TagBool
+  | tag_loc  : forall l, tagof (exp_loc l) TagLoc.
 
 Require Import Coq.Logic.Decidable.
 
@@ -141,11 +138,11 @@ Inductive E : Set :=
   | E_not   : E -> E
   | E_if    : E -> exp -> exp -> E
   | E_label : atom -> E -> E
-  | E_break : atom -> E -> E.
-(*  | E_ref   : E -> E
+  | E_break : atom -> E -> E
+  | E_ref   : E -> E
   | E_deref : E -> E
   | E_setref1 : E -> exp -> E
-  | E_setref2 : forall (v : exp), val v -> E -> E. *)
+  | E_setref2 : forall (v : exp), val v -> E -> E.
 
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
@@ -155,12 +152,10 @@ Inductive pot_redex : exp -> Prop :=
       val e -> lc e1 -> lc e2 -> pot_redex (exp_if e e1 e2)
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
-  | redex_break : forall x v, val v -> pot_redex (exp_break x v).
-(*
+  | redex_break : forall x v, val v -> pot_redex (exp_break x v)
   | redex_ref   : forall v, val v -> pot_redex (exp_ref v)
   | redex_deref : forall v, val v -> pot_redex (exp_deref v)
-  |  *)
-
+  | redex_set  : forall v1 v2, val v1 -> val v2 -> pot_redex (exp_set v1 v2).
 
 Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -186,7 +181,19 @@ Inductive decompose : exp -> E -> exp -> Prop :=
       decompose (exp_break x e) (E_break x E) ae
   | cxt_label : forall x e E ae,
       decompose e E ae ->
-      decompose (exp_label x e) (E_label x E) ae.
+      decompose (exp_label x e) (E_label x E) ae
+  | cxt_ref : forall e E ae,
+     decompose e E ae ->
+     decompose (exp_ref e) (E_ref E) ae
+  | cxt_deref : forall e E ae,
+     decompose e E ae ->
+     decompose (exp_deref e) (E_deref E) ae
+  | cxt_set1 : forall e1 e2 E ae,
+      decompose e1 E ae ->
+      decompose (exp_set e1 e2) (E_setref1 E e2) ae
+  | cxt_set2 : forall e1 e2 E ae (v1 : val e1),
+      decompose e2 E ae ->
+      decompose (exp_set e1 e2) (E_setref2 v1 E) ae.
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
@@ -203,7 +210,15 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_if : forall e e1 e2,
       decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e
   | cxt1_break : forall x e,
-      decompose1 (exp_break x e) (E_break x E_hole) e.
+      decompose1 (exp_break x e) (E_break x E_hole) e
+  | cxt1_ref : forall e,
+     decompose1 (exp_ref e) (E_ref E_hole) e
+  | cxt1_deref : forall e,
+     decompose1 (exp_deref e) (E_deref E_hole) e
+  | cxt1_set1 : forall e1 e2,
+      decompose1 (exp_set e1 e2) (E_setref1 E_hole e2) e1
+  | cxt1_set2 : forall e1 e2 (v1 : val e1),
+      decompose1 (exp_set e1 e2) (E_setref2 v1 E_hole) e2.
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
@@ -214,6 +229,10 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_if cxt e1 e2 => exp_if (plug e cxt) e1 e2
   | E_label x cxt => exp_label x (plug e cxt)
   | E_break x cxt => exp_break x (plug e cxt)
+  | E_ref cxt => exp_ref (plug e cxt)
+  | E_deref cxt => exp_deref (plug e cxt)
+  | E_setref1 cxt e2 => exp_set (plug e cxt) e2
+  | E_setref2 v1 _ cxt => exp_set v1 (plug e cxt)
 end.
 
 Fixpoint delta exp := match exp with
@@ -276,7 +295,11 @@ Tactic Notation "exp_cases" tactic(first) ident(c) :=
     | Case_aux c "exp_if"
     | Case_aux c "exp_err"
     | Case_aux c "exp_label"
-    | Case_aux c "exp_break" ].
+    | Case_aux c "exp_break"
+    | Case_aux c "exp_loc"
+    | Case_aux c "exp_ref"
+    | Case_aux c "exp_deref"
+    | Case_aux c "exp_set" ].
 Tactic Notation "lc_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "lc_fvar"
@@ -290,13 +313,18 @@ Tactic Notation "lc_cases" tactic(first) ident(c) :=
     | Case_aux c "lc_if"
     | Case_aux c "lc_err"
     | Case_aux c "lc_label"
-    | Case_aux c "lc_break" ].
+    | Case_aux c "lc_break"
+    | Case_aux c "lc_loc"
+    | Case_aux c "lc_ref"
+    | Case_aux c "lc_deref"
+    | Case_aux c "lc_set" ].
 Tactic Notation "val_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "val_abs"
     | Case_aux c "val_nat"
     | Case_aux c "val_fvar"
-    | Case_aux c "val_bool" ].
+    | Case_aux c "val_bool"
+    | Case_aux c "val_loc" ].
 Tactic Notation "E_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "E_hole"
@@ -306,7 +334,11 @@ Tactic Notation "E_cases" tactic(first) ident(c) :=
     | Case_aux c "E_not"
     | Case_aux c "E_if"
     | Case_aux c "E_label"
-    | Case_aux c "E_break" ].
+    | Case_aux c "E_break"
+    | Case_aux c "E_ref"
+    | Case_aux c "E_deref"
+    | Case_aux c "E_setref1"
+    | Case_aux c "E_setref2" ].
 Tactic Notation "redex_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "redex_app"
@@ -315,7 +347,10 @@ Tactic Notation "redex_cases" tactic(first) ident(c) :=
     | Case_aux c "redex_if"
     | Case_aux c "redex_err"
     | Case_aux c "redex_label"
-    | Case_aux c "redex_break" ].
+    | Case_aux c "redex_break"
+    | Case_aux c "redex_ref"
+    | Case_aux c "redex_deref"
+    | Case_aux c "redex_set" ].
 Tactic Notation "decompose_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "decompose_hole"
@@ -325,7 +360,11 @@ Tactic Notation "decompose_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose_not"
     | Case_aux c "decompose_if"
     | Case_aux c "decompose_break"
-    | Case_aux c "decompose_label" ].
+    | Case_aux c "decompose_label"
+    | Case_aux c "decompose_ref"
+    | Case_aux c "decompose_deref"
+    | Case_aux c "decompose_set1"
+    | Case_aux c "decompose_set2" ].
 Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "decompose1_hole"
@@ -334,7 +373,11 @@ Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose1_succ"
     | Case_aux c "decompose1_not"
     | Case_aux c "decompose1_if"
-    | Case_aux c "decompose1_break" ].
+    | Case_aux c "decompose1_break"
+    | Case_aux c "decompose1_ref"
+    | Case_aux c "decompose1_deref"
+    | Case_aux c "decompose1_set1"
+    | Case_aux c "decompose1_set2" ].
 Tactic Notation "contract_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "contract_succ"
@@ -416,6 +459,10 @@ Case "lc_app".
   destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
   destruct_decomp e2. exists (E_app_2 H1 E)...
   destruct_decomp e1. right. exists (E_app_1 E e2)...
+Case "lc_set".
+  destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
+  destruct_decomp e2. exists (E_setref2 H1 E)...
+  destruct_decomp e1. right. exists (E_setref1 E e2)...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
