@@ -486,11 +486,9 @@ Ltac solve_decomp' := match goal with
   | [ |- _] => fail "solve_decomp'"
 end.
 
-Lemma ZZ : 0 = 0. reflexivity. Qed.
-
 Ltac solve_decomp := match goal with
   | [ IH : 0 = 0 -> _ |- _ ]
-    => (let Hidiot := fresh "x" in remember (IH ZZ) as Hidiot; solve_decomp')
+    => (remember (IH (eq_refl 0)); solve_decomp')
   | [ |- _ ] => fail "flasd"
 end.
 
