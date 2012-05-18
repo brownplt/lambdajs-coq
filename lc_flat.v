@@ -53,7 +53,9 @@ Inductive exp : Set :=
   | exp_loc   : loc -> exp
   | exp_deref : exp -> exp
   | exp_ref   : exp -> exp
-  | exp_set   : exp -> exp -> exp.
+  | exp_set   : exp -> exp -> exp
+  | exp_catch : exp -> exp -> exp (* 2nd exp is a binder *)
+  | exp_throw : exp -> exp.
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -74,6 +76,8 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_deref e   => exp_deref (open_rec k u e)
   | exp_ref e     => exp_ref (open_rec k u e)
   | exp_set e1 e2 => exp_set (open_rec k u e1) (open_rec k u e2)
+  | exp_catch e1 e2 => exp_catch (open_rec k u e1) (open_rec (S k) u e2)
+  | exp_throw e     => exp_throw (open_rec k u e)
 end.
 
 Definition open e u := open_rec 0 u e.
@@ -97,7 +101,10 @@ Inductive lc' : nat -> exp -> Prop :=
   | lc_loc   : forall n x, lc' n (exp_loc x)
   | lc_ref   : forall n e, lc' n e -> lc' n (exp_ref e)
   | lc_deref : forall n e, lc' n e -> lc' n (exp_deref e)
-  | lc_set   : forall n e1 e2, lc' n e1 -> lc' n e2 -> lc' n (exp_set e1 e2).
+  | lc_set   : forall n e1 e2, lc' n e1 -> lc' n e2 -> lc' n (exp_set e1 e2)
+  | lc_catch : forall n e1 e2, 
+      lc' n e1 -> lc' (S n) e2 -> lc' n (exp_catch e1 e2)
+  | lc_throw : forall n e, lc' n e -> lc' n (exp_throw e).
 
 Definition lc e := lc' 0 e.
 
@@ -144,7 +151,9 @@ Inductive E : Set :=
   | E_ref   : E -> E
   | E_deref : E -> E
   | E_setref1 : E -> exp -> E
-  | E_setref2 : forall (v : exp), val v -> E -> E.
+  | E_setref2 : forall (v : exp), val v -> E -> E
+  | E_catch   : E -> exp -> E
+  | E_throw   : E -> E.
 
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
@@ -157,7 +166,9 @@ Inductive pot_redex : exp -> Prop :=
   | redex_break : forall x v, val v -> pot_redex (exp_break x v)
   | redex_ref   : forall v, val v -> pot_redex (exp_ref v)
   | redex_deref : forall v, val v -> pot_redex (exp_deref v)
-  | redex_set  : forall v1 v2, val v1 -> val v2 -> pot_redex (exp_set v1 v2).
+  | redex_set  : forall v1 v2, val v1 -> val v2 -> pot_redex (exp_set v1 v2)
+  | redex_catch : forall v e, val v -> lc' 1 e -> pot_redex (exp_catch v e)
+  | redex_throw : forall v, val v -> pot_redex (exp_throw v).
 
 Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -195,7 +206,13 @@ Inductive decompose : exp -> E -> exp -> Prop :=
       decompose (exp_set e1 e2) (E_setref1 E e2) ae
   | cxt_set2 : forall e1 e2 E ae (v1 : val e1),
       decompose e2 E ae ->
-      decompose (exp_set e1 e2) (E_setref2 v1 E) ae.
+      decompose (exp_set e1 e2) (E_setref2 v1 E) ae
+  | cxt_throw : forall e E ae,
+      decompose e E ae ->
+      decompose (exp_throw e) (E_throw E) ae
+  | cxt_catch : forall e1 e2 E ae,
+      decompose e1 E ae ->
+      decompose (exp_catch e1 e2) (E_catch E e2) ae.
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
@@ -219,7 +236,9 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_set1 : forall e1 e2,
       decompose1 (exp_set e1 e2) (E_setref1 E_hole e2) e1
   | cxt1_set2 : forall e1 e2 (v1 : val e1),
-      decompose1 (exp_set e1 e2) (E_setref2 v1 E_hole) e2.
+      decompose1 (exp_set e1 e2) (E_setref2 v1 E_hole) e2
+  | cxt1_throw : forall e,
+      decompose1 (exp_throw e) (E_throw E_hole) e.
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
@@ -234,6 +253,8 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_deref cxt => exp_deref (plug e cxt)
   | E_setref1 cxt e2 => exp_set (plug e cxt) e2
   | E_setref2 v1 _ cxt => exp_set v1 (plug e cxt)
+  | E_catch cxt e2 => exp_catch (plug e cxt) e2
+  | E_throw cxt    => exp_throw (plug e cxt)
 end.
 
 Fixpoint delta exp := match exp with
@@ -279,7 +300,15 @@ Inductive contract :  exp -> exp -> Prop :=
       contract (exp_deref v) exp_err
   | contract_err_bubble : forall e E,
       decompose e E exp_err ->
-      contract e exp_err.
+      contract e exp_err
+  | contract_throw : forall v,
+      val v ->
+      contract (exp_throw v) exp_err (* TODO: errors need carry values *)
+  | contract_catch_normal : forall v e,
+      val v ->
+      contract (exp_catch v e) v
+  | contract_catch_catch : forall e,
+      contract (exp_catch exp_err e) (open e (exp_nat 0)). (* TODO: err vals *)
 
 Inductive stored_val : Set :=
   | val_with_proof : forall (v : exp), val v -> stored_val.
@@ -342,7 +371,9 @@ Tactic Notation "exp_cases" tactic(first) ident(c) :=
     | Case_aux c "exp_loc"
     | Case_aux c "exp_ref"
     | Case_aux c "exp_deref"
-    | Case_aux c "exp_set" ].
+    | Case_aux c "exp_set"
+    | Case_aux c "exp_catch"
+    | Case_aux c "exp_throw" ].
 Tactic Notation "lc_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "lc_fvar"
@@ -360,7 +391,9 @@ Tactic Notation "lc_cases" tactic(first) ident(c) :=
     | Case_aux c "lc_loc"
     | Case_aux c "lc_ref"
     | Case_aux c "lc_deref"
-    | Case_aux c "lc_set" ].
+    | Case_aux c "lc_set"
+    | Case_aux c "lc_catch"
+    | Case_aux c "lc_throw" ].
 Tactic Notation "val_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "val_abs"
@@ -393,7 +426,9 @@ Tactic Notation "redex_cases" tactic(first) ident(c) :=
     | Case_aux c "redex_break"
     | Case_aux c "redex_ref"
     | Case_aux c "redex_deref"
-    | Case_aux c "redex_set" ].
+    | Case_aux c "redex_set"
+    | Case_aux c "redex_throw"
+    | Case_aux c "redex_catch" ].
 Tactic Notation "decompose_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "decompose_hole"
@@ -407,7 +442,9 @@ Tactic Notation "decompose_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose_ref"
     | Case_aux c "decompose_deref"
     | Case_aux c "decompose_set1"
-    | Case_aux c "decompose_set2" ].
+    | Case_aux c "decompose_set2" 
+    | Case_aux c "decompose_throw"
+    | Case_aux c "decompose_catch" ].
 Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "decompose1_hole"
@@ -420,7 +457,8 @@ Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose1_ref"
     | Case_aux c "decompose1_deref"
     | Case_aux c "decompose1_set1"
-    | Case_aux c "decompose1_set2" ].
+    | Case_aux c "decompose1_set2"
+    | Case_aux c "decompose1_throw" ].
 Tactic Notation "contract_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "contract_succ"
@@ -436,7 +474,10 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_break_mismatch"
     | Case_aux c "contract_set_err"
     | Case_aux c "contract_deref_err"
-    | Case_aux c "contract_err_bubble" ].
+    | Case_aux c "contract_err_bubble"
+    | Case_aux c "contract_throw"
+    | Case_aux c "contract_catch_normal"
+    | Case_aux c "contract_catch_catch" ].
 Tactic Notation "step_cases" tactic(first) ident(c) :=
   first;
   [ Case_aux c "step_err"
@@ -598,6 +639,8 @@ Case "lc_bvar".
   intros. apply lc_bvar. omega.
 Case "lc_abs".
   intros. apply lc_abs. apply IHlc'. omega.
+Case "lc_catch".
+  intros. apply lc_catch... apply IHlc'2. omega.
 Qed.
 
 Lemma lc_open : forall k e u,
@@ -655,6 +698,11 @@ Case "contract_break_match".
   inversion H; inversion H2; subst...
 Case "contract_break_mismatch".
   inversion H...
+Case "contract_catch_catch".
+  unfold lc in *.
+  inversion H; subst.
+  unfold open.
+  apply lc_open...
 Qed.
 
 Lemma preservation : forall sto1 e1 sto2 e2,
