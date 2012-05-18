@@ -22,6 +22,8 @@ Module Type ATOM.
   Declare Module Atom_as_OT : UsualOrderedType with Definition t := atom.
   Declare Module Ordered : Coq.Structures.OrderedType.OrderedType 
     with Definition t := atom.
+  Parameter atom_fresh_for_list : forall (xs : list atom), 
+    exists x : atom, ~ List.In x xs.
 
 End ATOM.
 
@@ -266,19 +268,58 @@ Inductive contract :  exp -> exp -> Prop :=
     contract (exp_label x (exp_break x v)) v
   | contract_break_mismatch : forall x y v,
     x <> y ->
-    contract (exp_label x (exp_break y v)) (exp_break y v).
+    contract (exp_label x (exp_break y v)) (exp_break y v)
+  | contract_set_err : forall v1 v2,
+      val v1 ->
+      val v2 ->
+      ~ tagof v1 TagLoc ->
+      contract (exp_set v1 v2) exp_err
+  | contract_deref_err : forall v,
+      val v ->
+      ~ tagof v TagLoc ->
+      contract (exp_deref v) exp_err.
 
-Inductive step : exp -> exp -> Prop :=
+Inductive stored_val : Set :=
+  | val_with_proof : forall (v : exp), val v -> stored_val.
+
+Definition sto := AtomEnv.t stored_val.
+
+Inductive step : sto -> exp -> sto -> exp -> Prop :=
   (* Slightly strange: exp_err -> exp_err -> exp_err -> ... *)
-  | step_err : forall e E,
+  | step_err : forall s e E,
     lc e ->
     decompose e E exp_err ->
-    step e exp_err
-  | step_contract : forall e E ae e',
+    step s e s exp_err
+  | step_contract : forall s e E ae e',
     lc e ->
     decompose e E ae ->
     contract ae e' ->
-    step e (plug e' E).
+    step s e s (plug e' E)
+  | step_ref : forall E e v l s (pf : val v),
+    lc e ->
+    decompose e E (exp_ref v) ->
+    ~ In l (map (@fst AtomEnv.key stored_val) (AtomEnv.elements s)) ->
+    step s e (AtomEnv.add l (val_with_proof pf) s) (plug (exp_loc l) E)
+  | step_deref : forall e s E l v (pf : val v),
+    lc e ->
+    decompose e E (exp_deref (exp_loc l)) ->
+    AtomEnv.find l s = Some (val_with_proof pf) ->
+    step s e s (plug v E)
+  | step_deref_err : forall e s E l,
+    lc e ->
+    decompose e E (exp_deref (exp_loc l)) ->
+    AtomEnv.find l s = None ->
+    step s e s (plug exp_err E)
+  | step_setref : forall s e E l v v_old (pf_v : val v) (pf_v_old : val v_old),
+    lc e ->
+    decompose e E (exp_set (exp_loc l) v) ->
+    AtomEnv.find l s = Some (val_with_proof pf_v_old) ->
+    step s e (AtomEnv.add l (val_with_proof pf_v) s) (plug (exp_loc l) E)
+  | step_setref_err : forall s e E l v,
+    lc e ->
+    decompose e E (exp_set (exp_loc l) v) ->
+    AtomEnv.find l s = None ->
+    step s e s (plug exp_err E).
 
 End Definitions.
 
@@ -390,14 +431,21 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_label"
     | Case_aux c "contract_break_bubble"
     | Case_aux c "contract_break_match"
-    | Case_aux c "contract_break_mismatch" ].
+    | Case_aux c "contract_break_mismatch"
+    | Case_aux c "contract_set_err"
+    | Case_aux c "contract_deref_err" ].
 Tactic Notation "step_cases" tactic(first) ident(c) :=
   first;
   [ Case_aux c "step_err"
-  | Case_aux c "step_contract" ].
+  | Case_aux c "step_contract"
+  | Case_aux c "step_ref"
+  | Case_aux c "step_deref"
+  | Case_aux c "step_deref_err"
+  | Case_aux c "step_setref"
+  | Case_aux c "step_setref_err" ].
 
 Hint Constructors decompose E val exp pot_redex exp val pot_redex lc' contract
-                  step decompose1.
+                  step decompose1 stored_val.
 Hint Unfold open lc.
 
 Lemma decompose_pot_redex : forall e E ae,
@@ -473,9 +521,9 @@ Hint Extern 1 ( False ) => match goal with
   | [ H: tagof _ _ |- False]  => inversion H
 end.
 
-Lemma progress : forall e,
+Lemma progress : forall sto e,
   lc e ->
-  val e \/ (exists e', step e e').
+  val e \/ (exists e', exists sto', step sto e sto' e').
 Proof with eauto.
 intros.
 remember H as HLC; clear HeqHLC.
@@ -484,9 +532,38 @@ destruct H...
 destruct_decomp e...
 right.
 assert (pot_redex ae). apply decompose_pot_redex in H...
-inversion H0; subst;
-  first [ inversion H1; subst; first [destruct b; eauto | eauto]
-    | eauto ].
+
+
+inversion H0; subst...
+inversion H1; subst; eauto 6.
+inversion H1; subst; first [destruct b; eauto 6 | eauto 6]. 
+inversion H1; subst; eauto 6.
+Focus 2. 
+(* deref *)
+inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
+remember (AtomEnv.find l sto0) as MaybeV.
+destruct MaybeV...
+Unfocus.
+Focus 2.
+inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
+remember (AtomEnv.find l sto0) as MaybeV.
+destruct MaybeV...
+destruct s0...
+Unfocus.
+(* ref *)
+assert (exists l : atom, 
+          ~ In l (map (@fst AtomEnv.key stored_val) (AtomEnv.elements sto0))) 
+    as [l HnotInL].
+  apply Atom.atom_fresh_for_list.
+exists (plug (exp_loc l) E).
+exists (AtomEnv.add l (val_with_proof H1) sto0)...
+(* setref *)
+inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
+remember (AtomEnv.find l sto0) as MaybeV.
+destruct MaybeV...
+destruct s.
+exists (plug (exp_loc l) E).
+exists (AtomEnv.add l (val_with_proof H2) sto0)...
 Qed.
 
 Ltac solve_lc_plug := match goal with
@@ -517,7 +594,7 @@ Lemma lc_active : forall e,
   pot_redex e -> lc e.
 Proof. intros. unfold lc. inversion H; auto using lc_val. Qed.
 
-Hint Resolve lc_active.
+Hint Resolve lc_active lc_val.
 
 Lemma lc_ascend : forall k k' e, k' >= k -> lc' k e -> lc' k' e.
 Proof with auto.
@@ -579,8 +656,6 @@ Case "contract_app".
   unfold open.
   inversion H4; subst.
   apply lc_open. exact H3. exact H5.
-Case "contract_label".
-  apply lc_val...
 Case "contract_break_bubble".
   apply decompose1_lc with (E := E0) (e := e)...
 Case "contract_break_match".
@@ -589,9 +664,9 @@ Case "contract_break_mismatch".
   inversion H...
 Qed.
 
-Lemma preservation : forall e1 e2,
+Lemma preservation : forall sto1 e1 sto2 e2,
   lc e1 ->
-  step e1 e2 ->
+  step sto1 e1 sto2 e2 ->
   lc e2.
 Proof with auto.
 intros.
@@ -601,6 +676,16 @@ Case "step_err"; auto.
 Case "step_contract".
   apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
   apply lc_active. apply decompose_pot_redex with (e := e) (E := E0)...
+Case "step_ref".
+  apply lc_plug with (e := e) (ae := exp_ref v)...
+Case "step_deref".
+  apply lc_plug with (e := e) (ae := exp_deref (exp_loc l))...
+Case "step_deref_err".
+  apply lc_plug with (e := e) (ae := exp_deref (exp_loc l))...
+Case "step_setref".
+  apply lc_plug with (e := e) (ae := exp_set (exp_loc l) v)...
+Case "step_setref_err".
+  apply lc_plug with (e := e) (ae := exp_set (exp_loc l) v)...
 Qed.
 
 End LC.
