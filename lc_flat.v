@@ -11,6 +11,7 @@ Require Import Coq.Arith.Lt.
 Require Import Coq.Structures.Orders.
 Require Import Coq.MSets.MSetList.
 Require Import Omega.
+Require Import SfLib.
 Set Implicit Arguments.
 
 Module Type ATOM.
@@ -40,6 +41,20 @@ Inductive exp : Set :=
   | exp_err  : exp
   | exp_label : atom -> exp -> exp
   | exp_break : atom -> exp -> exp.
+Tactic Notation "exp_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "exp_var" 
+    | Case_aux c "exp_bvar"
+    | Case_aux c "exp_abs"
+    | Case_aux c "exp_app"
+    | Case_aux c "exp_nat"
+    | Case_aux c "exp_succ"
+    | Case_aux c "exp_bool"
+    | Case_aux c "exp_not"
+    | Case_aux c "exp_if"
+    | Case_aux c "exp_err"
+    | Case_aux c "exp_label"
+    | Case_aux c "exp_break" ].
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -77,10 +92,30 @@ Inductive lc' : nat -> exp -> Prop :=
 
 Definition lc e := lc' 0 e.
 
+Tactic Notation "lc_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "lc_bvar"
+    | Case_aux c "lc_abs"
+    | Case_aux c "lc_app"
+    | Case_aux c "lc_nat"
+    | Case_aux c "lc_succ"
+    | Case_aux c "lc_bool"
+    | Case_aux c "lc_not"
+    | Case_aux c "lc_if"
+    | Case_aux c "lc_err"
+    | Case_aux c "lc_label"
+    | Case_aux c "lc_break" ].
+
 Inductive val : exp -> Prop :=
   | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
   | val_bool : forall b, val (exp_bool b).
+Tactic Notation "val_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "val_var"
+    | Case_aux c "val_abs"
+    | Case_aux c "val_nat"
+    | Case_aux c "val_bool" ].
 
 Inductive E : Set :=
   | E_hole  : E
@@ -91,6 +126,17 @@ Inductive E : Set :=
   | E_if    : E -> exp -> exp -> E
   | E_label : atom -> E -> E
   | E_break : atom -> E -> E.
+Tactic Notation "E_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "E_hole"
+    | Case_aux c "E_app_1"
+    | Case_aux c "E_app_2"
+    | Case_aux c "E_succ"
+    | Case_aux c "E_not"
+    | Case_aux c "E_if"
+    | Case_aux c "E_label"
+    | Case_aux c "E_break" ].
+
 
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
@@ -101,6 +147,15 @@ Inductive pot_redex : exp -> Prop :=
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
   | redex_break : forall x v, val v -> pot_redex (exp_break x v).
+Tactic Notation "redex_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "redex_app"
+    | Case_aux c "redex_succ"
+    | Case_aux c "redex_not"
+    | Case_aux c "redex_if"
+    | Case_aux c "redex_err"
+    | Case_aux c "redex_label"
+    | Case_aux c "redex_break" ].
 
 Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -127,6 +182,16 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_label : forall x e E ae,
       decompose e E ae ->
       decompose (exp_label x e) (E_label x E) ae.
+Tactic Notation "decompose_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "decompose_hole"
+    | Case_aux c "decompose_app_1"
+    | Case_aux c "decompose_app_2"
+    | Case_aux c "decompose_succ"
+    | Case_aux c "decompose_not"
+    | Case_aux c "decompose_if"
+    | Case_aux c "decompose_break"
+    | Case_aux c "decompose_label" ].
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
@@ -144,6 +209,15 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e
   | cxt1_break : forall x e,
       decompose1 (exp_break x e) (E_break x E_hole) e.
+Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "decompose1_hole"
+    | Case_aux c "decompose1_app_1"
+    | Case_aux c "decompose1_app_2"
+    | Case_aux c "decompose1_succ"
+    | Case_aux c "decompose1_not"
+    | Case_aux c "decompose1_if"
+    | Case_aux c "decompose1_break" ].
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
@@ -187,6 +261,23 @@ Inductive contract :  exp -> exp -> Prop :=
   | contract_break_mismatch : forall x y v,
     x <> y ->
     contract (exp_label x (exp_break y v)) (exp_break y v).
+Tactic Notation "contract_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "contract_succ"
+    | Case_aux c "contract_not"
+    | Case_aux c "contract_if1"
+    | Case_aux c "contract_if2"
+    | Case_aux c "contract_app"
+    | Case_aux c "contract_err_app_1"
+    | Case_aux c "contract_err_app_2"
+    | Case_aux c "contract_err_app_3"
+    | Case_aux c "contract_err_if1"
+    | Case_aux c "contract_err_if2"
+    | Case_aux c "contract_err_if3"
+    | Case_aux c "contract_label"
+    | Case_aux c "contract_break_bubble"
+    | Case_aux c "contract_break_match"
+    | Case_aux c "contract_break_mismatch" ].
 
 Inductive step : exp -> exp -> Prop :=
   (* Slightly strange: exp_err -> exp_err -> exp_err -> ... *)
@@ -199,6 +290,10 @@ Inductive step : exp -> exp -> Prop :=
     decompose e E ae ->
     contract ae e' ->
     step e (plug e' E).
+Tactic Notation "step_cases" tactic(first) ident(c) :=
+  first;
+  [ Case_aux c "step_err"
+  | Case_aux c "step_contract" ].
 
 End Definitions.
 
