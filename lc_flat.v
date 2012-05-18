@@ -199,7 +199,6 @@ Inductive decompose : exp -> E -> exp -> Prop :=
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
-      pot_redex e ->
       decompose1 e E_hole e
   | cxt1_app_1 : forall e1 e2,
       decompose1 (exp_app e1 e2) (E_app_1 E_hole e2) e1
@@ -535,7 +534,6 @@ assert (pot_redex ae). apply decompose_pot_redex in H...
 redex_cases (inversion H0) Case; subst...
 Case "redex_app". val_cases (inversion H1) SCase; subst; eauto 6.
 Case "redex_if". val_cases (inversion H1) SCase; subst; first [destruct b; eauto 6 | eauto 6]. 
-Case "redex_break". val_cases (inversion H1) SCase; subst; eauto 6.
 Case "redex_ref".
 assert (exists l : atom, 
           ~ In l (map (@fst AtomEnv.key stored_val) (AtomEnv.elements sto0))) 
