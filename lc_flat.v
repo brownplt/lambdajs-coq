@@ -534,36 +534,29 @@ right.
 assert (pot_redex ae). apply decompose_pot_redex in H...
 
 
-inversion H0; subst...
-inversion H1; subst; eauto 6.
-inversion H1; subst; first [destruct b; eauto 6 | eauto 6]. 
-inversion H1; subst; eauto 6.
-Focus 2. 
-(* deref *)
-inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
-remember (AtomEnv.find l sto0) as MaybeV.
-destruct MaybeV...
-Unfocus.
-Focus 2.
-inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
-remember (AtomEnv.find l sto0) as MaybeV.
-destruct MaybeV...
-destruct s0...
-Unfocus.
-(* ref *)
+redex_cases (inversion H0) Case; subst...
+Case "redex_app". val_cases (inversion H1) SCase; subst; eauto 6.
+Case "redex_if". val_cases (inversion H1) SCase; subst; first [destruct b; eauto 6 | eauto 6]. 
+Case "redex_break". val_cases (inversion H1) SCase; subst; eauto 6.
+Case "redex_ref".
 assert (exists l : atom, 
           ~ In l (map (@fst AtomEnv.key stored_val) (AtomEnv.elements sto0))) 
     as [l HnotInL].
   apply Atom.atom_fresh_for_list.
 exists (plug (exp_loc l) E).
 exists (AtomEnv.add l (val_with_proof H1) sto0)...
-(* setref *)
-inversion H1; subst; try solve [ exists (plug exp_err E); eauto ].
-remember (AtomEnv.find l sto0) as MaybeV.
-destruct MaybeV...
-destruct s.
-exists (plug (exp_loc l) E).
-exists (AtomEnv.add l (val_with_proof H2) sto0)...
+Case "redex_deref".
+val_cases (inversion H1) SCase; subst; try solve [ exists (plug exp_err E); eauto ].
+  SCase "val_loc". remember (AtomEnv.find l sto0) as MaybeV.
+  destruct MaybeV...
+  destruct s...
+Case "redex_set".
+val_cases (inversion H1) SCase; subst; try solve [ exists (plug exp_err E); eauto ].
+  SCase "val_loc". remember (AtomEnv.find l sto0) as MaybeV.
+  destruct MaybeV...
+  destruct s.
+  exists (plug (exp_loc l) E).
+  exists (AtomEnv.add l (val_with_proof H2) sto0)...
 Qed.
 
 Ltac solve_lc_plug := match goal with
