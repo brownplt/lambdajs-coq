@@ -41,20 +41,6 @@ Inductive exp : Set :=
   | exp_err  : exp
   | exp_label : atom -> exp -> exp
   | exp_break : atom -> exp -> exp.
-Tactic Notation "exp_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "exp_var" 
-    | Case_aux c "exp_bvar"
-    | Case_aux c "exp_abs"
-    | Case_aux c "exp_app"
-    | Case_aux c "exp_nat"
-    | Case_aux c "exp_succ"
-    | Case_aux c "exp_bool"
-    | Case_aux c "exp_not"
-    | Case_aux c "exp_if"
-    | Case_aux c "exp_err"
-    | Case_aux c "exp_label"
-    | Case_aux c "exp_break" ].
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -92,30 +78,11 @@ Inductive lc' : nat -> exp -> Prop :=
 
 Definition lc e := lc' 0 e.
 
-Tactic Notation "lc_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "lc_bvar"
-    | Case_aux c "lc_abs"
-    | Case_aux c "lc_app"
-    | Case_aux c "lc_nat"
-    | Case_aux c "lc_succ"
-    | Case_aux c "lc_bool"
-    | Case_aux c "lc_not"
-    | Case_aux c "lc_if"
-    | Case_aux c "lc_err"
-    | Case_aux c "lc_label"
-    | Case_aux c "lc_break" ].
 
 Inductive val : exp -> Prop :=
   | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat : forall n, val (exp_nat n)
   | val_bool : forall b, val (exp_bool b).
-Tactic Notation "val_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "val_var"
-    | Case_aux c "val_abs"
-    | Case_aux c "val_nat"
-    | Case_aux c "val_bool" ].
 
 Inductive E : Set :=
   | E_hole  : E
@@ -126,16 +93,6 @@ Inductive E : Set :=
   | E_if    : E -> exp -> exp -> E
   | E_label : atom -> E -> E
   | E_break : atom -> E -> E.
-Tactic Notation "E_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "E_hole"
-    | Case_aux c "E_app_1"
-    | Case_aux c "E_app_2"
-    | Case_aux c "E_succ"
-    | Case_aux c "E_not"
-    | Case_aux c "E_if"
-    | Case_aux c "E_label"
-    | Case_aux c "E_break" ].
 
 
 Inductive pot_redex : exp -> Prop :=
@@ -147,15 +104,6 @@ Inductive pot_redex : exp -> Prop :=
   | redex_err  : pot_redex exp_err
   | redex_label : forall x v, val v -> pot_redex (exp_label x v)
   | redex_break : forall x v, val v -> pot_redex (exp_break x v).
-Tactic Notation "redex_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "redex_app"
-    | Case_aux c "redex_succ"
-    | Case_aux c "redex_not"
-    | Case_aux c "redex_if"
-    | Case_aux c "redex_err"
-    | Case_aux c "redex_label"
-    | Case_aux c "redex_break" ].
 
 Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -182,16 +130,6 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_label : forall x e E ae,
       decompose e E ae ->
       decompose (exp_label x e) (E_label x E) ae.
-Tactic Notation "decompose_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "decompose_hole"
-    | Case_aux c "decompose_app_1"
-    | Case_aux c "decompose_app_2"
-    | Case_aux c "decompose_succ"
-    | Case_aux c "decompose_not"
-    | Case_aux c "decompose_if"
-    | Case_aux c "decompose_break"
-    | Case_aux c "decompose_label" ].
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
@@ -209,15 +147,6 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e
   | cxt1_break : forall x e,
       decompose1 (exp_break x e) (E_break x E_hole) e.
-Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "decompose1_hole"
-    | Case_aux c "decompose1_app_1"
-    | Case_aux c "decompose1_app_2"
-    | Case_aux c "decompose1_succ"
-    | Case_aux c "decompose1_not"
-    | Case_aux c "decompose1_if"
-    | Case_aux c "decompose1_break" ].
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
@@ -261,23 +190,6 @@ Inductive contract :  exp -> exp -> Prop :=
   | contract_break_mismatch : forall x y v,
     x <> y ->
     contract (exp_label x (exp_break y v)) (exp_break y v).
-Tactic Notation "contract_cases" tactic(first) ident(c) :=
-  first;
-    [ Case_aux c "contract_succ"
-    | Case_aux c "contract_not"
-    | Case_aux c "contract_if1"
-    | Case_aux c "contract_if2"
-    | Case_aux c "contract_app"
-    | Case_aux c "contract_err_app_1"
-    | Case_aux c "contract_err_app_2"
-    | Case_aux c "contract_err_app_3"
-    | Case_aux c "contract_err_if1"
-    | Case_aux c "contract_err_if2"
-    | Case_aux c "contract_err_if3"
-    | Case_aux c "contract_label"
-    | Case_aux c "contract_break_bubble"
-    | Case_aux c "contract_break_match"
-    | Case_aux c "contract_break_mismatch" ].
 
 Inductive step : exp -> exp -> Prop :=
   (* Slightly strange: exp_err -> exp_err -> exp_err -> ... *)
@@ -290,12 +202,97 @@ Inductive step : exp -> exp -> Prop :=
     decompose e E ae ->
     contract ae e' ->
     step e (plug e' E).
+
+End Definitions.
+Tactic Notation "exp_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "exp_bvar"
+    | Case_aux c "exp_abs"
+    | Case_aux c "exp_app"
+    | Case_aux c "exp_nat"
+    | Case_aux c "exp_succ"
+    | Case_aux c "exp_bool"
+    | Case_aux c "exp_not"
+    | Case_aux c "exp_if"
+    | Case_aux c "exp_err"
+    | Case_aux c "exp_label"
+    | Case_aux c "exp_break" ].
+Tactic Notation "lc_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "lc_bvar"
+    | Case_aux c "lc_abs"
+    | Case_aux c "lc_app"
+    | Case_aux c "lc_nat"
+    | Case_aux c "lc_succ"
+    | Case_aux c "lc_bool"
+    | Case_aux c "lc_not"
+    | Case_aux c "lc_if"
+    | Case_aux c "lc_err"
+    | Case_aux c "lc_label"
+    | Case_aux c "lc_break" ].
+Tactic Notation "val_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "val_var"
+    | Case_aux c "val_abs"
+    | Case_aux c "val_nat"
+    | Case_aux c "val_bool" ].
+Tactic Notation "E_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "E_hole"
+    | Case_aux c "E_app_1"
+    | Case_aux c "E_app_2"
+    | Case_aux c "E_succ"
+    | Case_aux c "E_not"
+    | Case_aux c "E_if"
+    | Case_aux c "E_label"
+    | Case_aux c "E_break" ].
+Tactic Notation "redex_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "redex_app"
+    | Case_aux c "redex_succ"
+    | Case_aux c "redex_not"
+    | Case_aux c "redex_if"
+    | Case_aux c "redex_err"
+    | Case_aux c "redex_label"
+    | Case_aux c "redex_break" ].
+Tactic Notation "decompose_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "decompose_hole"
+    | Case_aux c "decompose_app_1"
+    | Case_aux c "decompose_app_2"
+    | Case_aux c "decompose_succ"
+    | Case_aux c "decompose_not"
+    | Case_aux c "decompose_if"
+    | Case_aux c "decompose_break"
+    | Case_aux c "decompose_label" ].
+Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "decompose1_hole"
+    | Case_aux c "decompose1_app_1"
+    | Case_aux c "decompose1_app_2"
+    | Case_aux c "decompose1_succ"
+    | Case_aux c "decompose1_not"
+    | Case_aux c "decompose1_if"
+    | Case_aux c "decompose1_break" ].
+Tactic Notation "contract_cases" tactic(first) ident(c) :=
+  first;
+    [ Case_aux c "contract_succ"
+    | Case_aux c "contract_not"
+    | Case_aux c "contract_if1"
+    | Case_aux c "contract_if2"
+    | Case_aux c "contract_app"
+    | Case_aux c "contract_err_app_1"
+    | Case_aux c "contract_err_app_3"
+    | Case_aux c "contract_err_if1"
+    | Case_aux c "contract_err_if3"
+    | Case_aux c "contract_label"
+    | Case_aux c "contract_break_bubble"
+    | Case_aux c "contract_break_match"
+    | Case_aux c "contract_break_mismatch" ].
 Tactic Notation "step_cases" tactic(first) ident(c) :=
   first;
   [ Case_aux c "step_err"
   | Case_aux c "step_contract" ].
-
-End Definitions.
 
 Hint Constructors decompose E val exp pot_redex exp val pot_redex lc' contract
                   step decompose1.
@@ -309,7 +306,7 @@ Lemma plug_ok : forall e E e',
   decompose e E e' -> plug e' E = e.
 Proof.
 intros.
-induction H; simpl; try (auto || rewrite -> IHdecompose; auto).
+decompose_cases (induction H) Case; simpl; try (auto || rewrite -> IHdecompose; auto).
 Qed.
 
 Ltac destruct_decomp e := match goal with
@@ -328,7 +325,7 @@ Lemma decompose1_lc : forall E e ae,
   lc e ->
   decompose1 e E ae ->
   lc ae.
-Proof. intros. induction H0; try (inversion H; eauto). Qed.
+Proof. intros. decompose1_cases (induction H0) Case; try (inversion H; eauto). Qed.
 
 Ltac solve_decomp' := match goal with
   | [ H1 : lc' 0 ?e,
@@ -354,11 +351,12 @@ Proof with eauto.
 intros.
 unfold lc in H.
 remember 0.
-induction H; intros; subst; try solve_decomp...
-inversion H.
-destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
-destruct_decomp e2. exists (E_app_2 H1 E)...
-destruct_decomp e1. right. exists (E_app_1 E e2)...
+lc_cases (induction H) Case; intros; subst; try solve_decomp...
+Case "lc_bvar". inversion H.
+Case "lc_app".
+  destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
+  destruct_decomp e2. exists (E_app_2 H1 E)...
+  destruct_decomp e1. right. exists (E_app_1 E e2)...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
@@ -368,14 +366,13 @@ Lemma progress : forall e,
   val e \/ (exists e', step e e').
 Proof with eauto.
 intros.
-remember H as HLC.
-clear HeqHLC.
+remember H as HLC; clear HeqHLC.
 apply decomp in H.
 destruct H...
 destruct_decomp e...
 right.
 assert (pot_redex ae). apply decompose_pot_redex in H...
-inversion H0; subst; 
+inversion H0; subst;
   first [ inversion H1; subst; first [destruct b; eauto | eauto]
     | eauto ].
 Qed.
@@ -394,7 +391,7 @@ Lemma lc_plug : forall E ae e e',
   lc (plug e' E).
 Proof.
 intros.
-induction H1; first [ inversion H; subst; simpl; unfold lc in *; solve_lc_plug | auto ].
+decompose_cases (induction H1) Case; first [ inversion H; subst; simpl; unfold lc in *; solve_lc_plug | auto ].
 Qed.
 
 Hint Resolve lc_plug.
@@ -414,9 +411,11 @@ Lemma lc_ascend : forall k k' e, k' >= k -> lc' k e -> lc' k' e.
 Proof with auto.
 intros.
 generalize dependent k'.
-induction H0...
-intros. apply lc_bvar. omega.
-intros. apply lc_abs. apply IHlc'. omega.
+lc_cases (induction H0) Case...
+Case "lc_bvar".
+  intros. apply lc_bvar. omega.
+Case "lc_abs".
+  intros. apply lc_abs. apply IHlc'. omega.
 Qed.
 
 Lemma lc_open : forall k e u,
@@ -426,41 +425,29 @@ Lemma lc_open : forall k e u,
 Proof with auto.
 intros.
 generalize dependent k.
-induction e; intros.
-simpl...
-simpl. 
-assert (k >= n \/ k < n). apply le_or_lt.
-destruct H1.
-assert ({ k = n } + { k <> n }). decide equality.
-destruct H2.
-assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
-rewrite -> H2.  assert (k >= 0). omega.
-  apply lc_ascend with (k := 0) (k' := k)...
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
-rewrite -> H2.
-assert (n < k). omega. auto...
-(* k < n *)
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
-rewrite -> H2. apply lc_bvar.
-clear H2.
-inversion H; subst.
-assert False. omega.
-inversion H2.
-(* abs *) 
-simpl.
-apply lc_abs.
-inversion H; subst.
-apply (IHe (S k) H3).
-(* app *)
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
-simpl; inversion H; subst;  eauto.
+exp_cases (induction e) Case; intros; try solve [simpl; inversion H; subst;  eauto].
+Case "exp_bvar".
+  simpl. 
+  assert (k >= n \/ k < n). apply le_or_lt.
+  destruct H1.
+  SCase "k >= n".
+    assert ({ k = n } + { k <> n }). decide equality.
+    destruct H2.
+    SSCase "k = n".
+    assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
+    rewrite -> H2.  assert (k >= 0). omega.
+    apply lc_ascend with (k := 0) (k' := k)...
+    SSCase "k <> n".
+    assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
+    rewrite -> H2.
+    assert (n < k). omega. auto...
+  SCase "k < n".
+    assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
+    rewrite -> H2. apply lc_bvar.
+    clear H2.
+    inversion H; subst.
+    assert False. omega.
+    inversion H2.
 Qed.
 
 Lemma lc_contract : forall ae e,
@@ -469,23 +456,25 @@ Lemma lc_contract : forall ae e,
   lc e.
 Proof with auto.
 intros.
-destruct H0...
-simpl. destruct e; auto.
-simpl. destruct e; auto.
-inversion H...
-inversion H...
-(* app *)
-unfold lc in *.
-inversion H; subst.
-unfold open.
-inversion H4; subst.
-apply lc_open. exact H3. exact H5.
-(* break *)
-apply lc_val...
-(* break *)
-apply decompose1_lc with (E := E0) (e := e)...
-inversion H; inversion H2; subst...
-inversion H...
+contract_cases (destruct H0) Case...
+Case "contract_succ". simpl. destruct e; auto.
+Case "contract_not". simpl. destruct e; auto.
+Case "contract_if1". inversion H...
+Case "contract_if2". inversion H...
+Case "contract_app".
+  unfold lc in *.
+  inversion H; subst.
+  unfold open.
+  inversion H4; subst.
+  apply lc_open. exact H3. exact H5.
+Case "contract_label".
+  apply lc_val...
+Case "contract_break_bubble".
+  apply decompose1_lc with (E := E0) (e := e)...
+Case "contract_break_match".
+  inversion H; inversion H2; subst...
+Case "contract_break_mismatch".
+  inversion H...
 Qed.
 
 Lemma preservation : forall e1 e2,
@@ -495,9 +484,10 @@ Lemma preservation : forall e1 e2,
 Proof with auto.
 intros.
 unfold lc in *.
-destruct H0. auto.
-apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
-apply lc_active. apply decompose_pot_redex with (e := e) (E := E0)...
+step_cases (destruct H0) Case. Case "step_err"; auto.
+Case "step_contract".
+  apply lc_contract in H2... apply lc_plug with (ae := ae) (e := e)...
+  apply lc_active. apply decompose_pot_redex with (e := e) (E := E0)...
 Qed.
 
 
