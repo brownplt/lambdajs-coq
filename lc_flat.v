@@ -12,6 +12,7 @@ Require Import Coq.Structures.Orders.
 Require Import Coq.Structures.OrderedType.
 Require Import Coq.MSets.MSetList.
 Require Import Coq.FSets.FMapList.
+Require Import Coq.Strings.String.
 Require Import Omega.
 Require Import SfLib.
 Set Implicit Arguments.
@@ -27,27 +28,42 @@ Module Type ATOM.
 
 End ATOM.
 
-Module LC (Import Atom : ATOM).
+Module Type STRING.
+
+  Parameter string : Set.
+  Declare Module String_as_OT : UsualOrderedType with Definition t := string.
+  Declare Module Ordered : Coq.Structures.OrderedType.OrderedType
+    with Definition t := string.
+
+End STRING.
+
+Module LC (Import Atom : ATOM) (Import String : STRING).
 
 Module Atoms := Coq.MSets.MSetList.Make (Atom.Atom_as_OT).
 Module AtomEnv := Coq.FSets.FMapList.Make (Atom.Ordered).
 
 Definition atom := Atom.atom. (* free variables *)
 Definition loc := Atom.atom.
+Definition string := String.string.
 
 Section Definitions.
 
+Inductive Forall {A} (P:A->Type) : list A -> Type :=
+ | Forall_nil : Forall P nil
+ | Forall_cons : forall x l, P x -> Forall P l -> Forall P (x::l).
+Hint Constructors Forall.
+
 Inductive exp : Set :=
-  | exp_fvar : atom -> exp
-  | exp_bvar : nat -> exp (* bound variables as de Brujin indices *)
-  | exp_abs  : exp -> exp
-  | exp_app  : exp -> exp -> exp
-  | exp_nat  : nat -> exp
-  | exp_succ : exp -> exp
-  | exp_bool : bool -> exp
-  | exp_not  : exp -> exp
-  | exp_if   : exp -> exp -> exp -> exp
-  | exp_err  : exp
+  | exp_fvar  : atom -> exp
+  | exp_bvar  : nat -> exp (* bound variables as de Brujin indices *)
+  | exp_abs   : exp -> exp
+  | exp_app   : exp -> exp -> exp
+  | exp_nat   : nat -> exp
+  | exp_succ  : exp -> exp
+  | exp_bool  : bool -> exp
+  | exp_not   : exp -> exp
+  | exp_if    : exp -> exp -> exp -> exp
+  | exp_err   : exp
   | exp_label : atom -> exp -> exp
   | exp_break : atom -> exp -> exp
   | exp_loc   : loc -> exp
@@ -57,7 +73,69 @@ Inductive exp : Set :=
   | exp_catch : exp -> exp -> exp (* 2nd exp is a binder *)
   | exp_throw : exp -> exp
   | exp_seq   : exp -> exp -> exp
-  | exp_finally : exp -> exp -> exp.
+  | exp_finally : exp -> exp -> exp
+  | exp_obj   : list (string * exp) -> exp.
+Print exp_rect. Print exp_rec.
+Reset exp_rect.
+Definition exp_rect := fun (P : exp -> Type)
+  (f : forall a : atom, P (exp_fvar a))
+  (f0 : forall n : nat, P (exp_bvar n))
+  (f1 : forall e : exp, P e -> P (exp_abs e))
+  (f2 : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_app e e0))
+  (f3 : forall n : nat, P (exp_nat n))
+  (f4 : forall e : exp, P e -> P (exp_succ e))
+  (f5 : forall b : bool, P (exp_bool b))
+  (f6 : forall e : exp, P e -> P (exp_not e))
+  (f7 : forall e : exp, P e -> forall e0 : exp, P e0 -> forall e1 : exp, P e1 -> P (exp_if e e0 e1))
+  (f8 : P exp_err)
+  (f9 : forall (a : atom) (e : exp), P e -> P (exp_label a e))
+  (f10 : forall (a : atom) (e : exp), P e -> P (exp_break a e))
+  (f11 : forall l : loc, P (exp_loc l))
+  (f12 : forall e : exp, P e -> P (exp_deref e))
+  (f13 : forall e : exp, P e -> P (exp_ref e))
+  (f14 : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_set e e0))
+  (f15 : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_catch e e0))
+  (f16 : forall e : exp, P e -> P (exp_throw e))
+  (f17 : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_seq e e0))
+  (f18 : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_finally e e0))
+  (f19 : forall l : list (string * exp), Forall P (map (@snd string exp) l) -> P (exp_obj l)) =>
+fix exp_rec' (e : exp) {struct e} : P e :=
+  match e as e0 return (P e0) with
+  | exp_fvar a => f a
+  | exp_bvar n => f0 n
+  | exp_abs e0 => f1 e0 (exp_rec' e0)
+  | exp_app e0 e1 => f2 e0 (exp_rec' e0) e1 (exp_rec' e1)
+  | exp_nat n => f3 n
+  | exp_succ e0 => f4 e0 (exp_rec' e0)
+  | exp_bool b => f5 b
+  | exp_not e0 => f6 e0 (exp_rec' e0)
+  | exp_if e0 e1 e2 => f7 e0 (exp_rec' e0) e1 (exp_rec' e1) e2 (exp_rec' e2)
+  | exp_err => f8
+  | exp_label a e0 => f9 a e0 (exp_rec' e0)
+  | exp_break a e0 => f10 a e0 (exp_rec' e0)
+  | exp_loc l => f11 l
+  | exp_deref e0 => f12 e0 (exp_rec' e0)
+  | exp_ref e0 => f13 e0 (exp_rec' e0)
+  | exp_set e0 e1 => f14 e0 (exp_rec' e0) e1 (exp_rec' e1)
+  | exp_catch e0 e1 => f15 e0 (exp_rec' e0) e1 (exp_rec' e1)
+  | exp_throw e0 => f16 e0 (exp_rec' e0)
+  | exp_seq e0 e1 => f17 e0 (exp_rec' e0) e1 (exp_rec' e1)
+  | exp_finally e0 e1 => f18 e0 (exp_rec' e0) e1 (exp_rec' e1)
+  | exp_obj l =>
+    f19 l ((fix forall_rec (ls : list (string * exp)) : Forall P (map (@snd string exp) ls) :=
+      match ls with
+        | nil => Forall_nil P
+        | (_,tr)::rest => Forall_cons tr (exp_rec' tr) (forall_rec rest)
+      end) l)
+  end.
+Definition exp_rec := fun (P : exp -> Set) => exp_rect (P := P).
+Definition exp_ind := fun (P : exp -> Prop) => exp_rect (P := P).
+
+Definition fieldnames l := map (@fst string exp) l.
+Definition values l := map (@snd string exp) l.
+Definition map_values A (f : exp -> A) l := 
+  map (fun kv => ((@fst string exp) kv, f ((@snd string exp) kv))) l.
+Hint Unfold values fieldnames map_values.
 
 (* open_rec is the analogue of substitution for de Brujin indices.
   open_rec k u e replaces index k with u in e. *)
@@ -82,7 +160,9 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_throw e     => exp_throw (open_rec k u e)
   | exp_seq e1 e2   => exp_seq (open_rec k u e1) (open_rec k u e2)
   | exp_finally e1 e2 => exp_finally (open_rec k u e1) (open_rec k u e2)
+  | exp_obj l     => exp_obj (map_values (open_rec k u) l)
 end.
+
 
 Definition open e u := open_rec 0 u e.
 
@@ -113,32 +193,178 @@ Inductive lc' : nat -> exp -> Prop :=
   | lc_finally : forall n e1 e2, 
     lc' n e1 ->
     lc' n e2 ->
-    lc' n (exp_finally e1 e2).
+    lc' n (exp_finally e1 e2)
+  | lc_obj   : forall n l, NoDup (fieldnames l)
+                    -> Forall (lc' n) (values l)
+                    -> lc' n (exp_obj l).
+
+Reset lc'_ind.
+
+Definition lc'_ind := fun (P : nat -> exp -> Prop)
+  (f : forall (n : nat) (a : atom), P n (exp_fvar a))
+  (f0 : forall k n : nat, k < n -> P n (exp_bvar k))
+  (f1 : forall (n : nat) (e : exp),
+        lc' (S n) e -> P (S n) e -> P n (exp_abs e))
+  (f2 : forall (n : nat) (e1 e2 : exp),
+        lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_app e1 e2))
+  (f3 : forall n x : nat, P n (exp_nat x))
+  (f4 : forall (n : nat) (e : exp), lc' n e -> P n e -> P n (exp_succ e))
+  (f5 : forall (n : nat) (b : bool), P n (exp_bool b))
+  (f6 : forall (n : nat) (e : exp), lc' n e -> P n e -> P n (exp_not e))
+  (f7 : forall (n : nat) (e e1 e2 : exp),
+        lc' n e ->
+        P n e ->
+        lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_if e e1 e2))
+  (f8 : forall n : nat, P n exp_err)
+  (f9 : forall (n : nat) (x : atom) (e : exp),
+        lc' n e -> P n e -> P n (exp_label x e))
+  (f10 : forall (n : nat) (x : atom) (e : exp),
+         lc' n e -> P n e -> P n (exp_break x e))
+  (f11 : forall (n : nat) (x : loc), P n (exp_loc x))
+  (f12 : forall (n : nat) (e : exp), lc' n e -> P n e -> P n (exp_ref e))
+  (f13 : forall (n : nat) (e : exp), lc' n e -> P n e -> P n (exp_deref e))
+  (f14 : forall (n : nat) (e1 e2 : exp),
+         lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_set e1 e2))
+  (f15 : forall (n : nat) (e1 e2 : exp),
+         lc' n e1 ->
+         P n e1 -> lc' (S n) e2 -> P (S n) e2 -> P n (exp_catch e1 e2))
+  (f16 : forall (n : nat) (e : exp), lc' n e -> P n e -> P n (exp_throw e))
+  (f17 : forall (n : nat) (e1 e2 : exp),
+         lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_seq e1 e2))
+  (f18 : forall (n : nat) (e1 e2 : exp),
+         lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_finally e1 e2))
+  (f19 : forall (n : nat) (l : list (string * exp)),
+         NoDup (fieldnames l) -> Forall (P n) (map (@snd string exp) l) -> P n (exp_obj l)) =>
+fix lc'_ind' (n : nat) (e : exp) (l : lc' n e) {struct l} : P n e :=
+  match l in (lc' n0 e0) return (P n0 e0) with
+  | lc_fvar n0 a => f n0 a
+  | lc_bvar k n0 l0 => f0 k n0 l0
+  | lc_abs n0 e0 l0 => f1 n0 e0 l0 (lc'_ind' (S n0) e0 l0)
+  | lc_app n0 e1 e2 l0 l1 => f2 n0 e1 e2 l0 (lc'_ind' n0 e1 l0) l1 (lc'_ind' n0 e2 l1)
+  | lc_nat n0 x => f3 n0 x
+  | lc_succ n0 e0 l0 => f4 n0 e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_bool n0 b => f5 n0 b
+  | lc_not n0 e0 l0 => f6 n0 e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_if n0 e0 e1 e2 l0 l1 l2 =>
+      f7 n0 e0 e1 e2 l0 (lc'_ind' n0 e0 l0) l1 (lc'_ind' n0 e1 l1) l2 (lc'_ind' n0 e2 l2)
+  | lc_err n0 => f8 n0
+  | lc_label n0 x e0 l0 => f9 n0 x e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_break n0 x e0 l0 => f10 n0 x e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_loc n0 x => f11 n0 x
+  | lc_ref n0 e0 l0 => f12 n0 e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_deref n0 e0 l0 => f13 n0 e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_set n0 e1 e2 l0 l1 => f14 n0 e1 e2 l0 (lc'_ind' n0 e1 l0) l1 (lc'_ind' n0 e2 l1)
+  | lc_catch n0 e1 e2 l0 l1 =>
+      f15 n0 e1 e2 l0 (lc'_ind' n0 e1 l0) l1 (lc'_ind' (S n0) e2 l1)
+  | lc_throw n0 e0 l0 => f16 n0 e0 l0 (lc'_ind' n0 e0 l0)
+  | lc_seq n0 e1 e2 l0 l1 => f17 n0 e1 e2 l0 (lc'_ind' n0 e1 l0) l1 (lc'_ind' n0 e2 l1)
+  | lc_finally n0 e1 e2 l0 l1 => f18 n0 e1 e2 l0 (lc'_ind' n0 e1 l0) l1 (lc'_ind' n0 e2 l1)
+  | lc_obj n0 l0 n1 pf_lc' => f19 n0 l0 n1
+      ((fix forall_lc_ind T (pf_lc : Forall (lc' n0) T) : Forall (P n0) T :=
+        match pf_lc with
+          | Forall_nil => Forall_nil (P n0)
+          | Forall_cons t l' isVal rest => 
+            Forall_cons (A:=exp) (P:=P n0) (l:=l') t (lc'_ind' n0 t isVal) (forall_lc_ind l' rest)
+        end) (map (@snd string exp) l0) pf_lc')
+  end.
 
 Definition lc e := lc' 0 e.
 
 Inductive val : exp -> Prop :=
-  | val_abs : forall e, lc (exp_abs e) -> val (exp_abs e)
-  | val_nat : forall n, val (exp_nat n)
+  | val_abs  : forall e, lc (exp_abs e) -> val (exp_abs e)
+  | val_nat  : forall n, val (exp_nat n)
   | val_fvar : forall a, val (exp_fvar a)
   | val_bool : forall b, val (exp_bool b)
-  | val_loc  : forall l, val (exp_loc l).
+  | val_loc  : forall l, val (exp_loc l)
+  | val_obj  : forall l, Forall val (values l)
+                     -> NoDup (fieldnames l)
+                     -> val (exp_obj l).
+Reset val_ind.
+
+Definition val_ind := fun (P : exp -> Prop)
+  (f : forall e : exp, lc (exp_abs e) -> P (exp_abs e))
+  (f0 : forall n : nat, P (exp_nat n))
+  (f1 : forall a : atom, P (exp_fvar a))
+  (f2 : forall b : bool, P (exp_bool b))
+  (f3 : forall l : loc, P (exp_loc l))
+  (f4 : forall l : list (string * exp), Forall P (map (@snd string exp) l) ->
+        NoDup (fieldnames l) -> P (exp_obj l))
+  (e : exp) (v : val e) =>
+  fix val_ind' (e : exp) (v : val e) { struct v } : P e :=
+  match v in (val e0) return (P e0) with
+    | val_abs x x0 => f x x0
+    | val_nat x => f0 x
+    | val_fvar x => f1 x
+    | val_bool x => f2 x
+    | val_loc x => f3 x
+    | val_obj x pf_vals x0 => f4 x
+      ((fix forall_val_ind T (pf_vals : Forall val T) : Forall P T :=
+        match pf_vals with
+          | Forall_nil => Forall_nil P
+          | Forall_cons t l' isVal rest => 
+            Forall_cons (A:=exp) (P:=P) (l:=l') t (val_ind' t isVal) (forall_val_ind l' rest)
+        end) (map (@snd string exp) x) pf_vals) x0
+  end.
+
+
+Inductive stored_val : Set :=
+  | val_with_proof : forall (v : exp), val v -> stored_val.
+
+Definition sto := AtomEnv.t stored_val.
 
 Inductive tag : Set :=
-  | TagAbs : tag
-  | TagNat : tag
-  | TagVar : tag
+  | TagAbs  : tag
+  | TagNat  : tag
+  | TagVar  : tag
   | TagBool : tag
-  | TagLoc : tag.
+  | TagLoc  : tag
+  | TagObj  : tag.
 
 Inductive tagof : exp -> tag -> Prop :=
   | tag_abs  : forall e, tagof (exp_abs e) TagAbs
   | tag_nat  : forall n, tagof (exp_nat n) TagNat
   | tag_var  : forall x, tagof (exp_fvar x) TagVar
   | tag_bool : forall b, tagof (exp_bool b) TagBool
-  | tag_loc  : forall l, tagof (exp_loc l) TagLoc.
+  | tag_loc  : forall l, tagof (exp_loc l) TagLoc
+  | tag_obj  : forall l, tagof (exp_obj l) TagObj.
 
 Require Import Coq.Logic.Decidable.
+
+Hint Unfold open lc.
+Hint Constructors lc'.
+
+Lemma lc_val : forall v,
+  val v -> lc' 0 v.
+Proof with auto.
+intros. induction v; try inversion H...
+Case "exp_obj".
+  constructor... subst... induction l; simpl... constructor.
+  SCase "head".
+  inversion H0. apply H5. subst. inversion H2. auto.  
+  SCase "tail". 
+  apply IHl. inversion H0... constructor. 
+  inversion H2... inversion H2... inversion H3... inversion H2... inversion H3...
+Qed.
+
+Hint Resolve lc_val.
+
+Lemma lc_ascend : forall k k' e, k' >= k -> lc' k e -> lc' k' e.
+Proof with auto.
+intros.
+generalize dependent k'.
+induction H0...
+Case "lc_bvar".
+  intros. apply lc_bvar. omega.
+Case "lc_abs".
+  intros. apply lc_abs. apply IHlc'. omega.
+Case "lc_catch".
+  intros. apply lc_catch... apply IHlc'2. omega.
+Case "lc_obj".
+  intros. apply lc_obj... unfold values.
+  induction H0; constructor... 
+Qed.
+
+
 
 Hint Constructors tagof tag.
 Lemma decide_tagof : forall e t, { tagof e t } + { ~ tagof e t }.
@@ -148,23 +374,40 @@ Proof.
   destruct e; destruct t; try solve  [ auto | right; intros; inversion H ].
 Qed.
 
+Lemma decide_val : forall e, { val e } + { ~ val e }.
+Proof with eauto.
+unfold not. intro. 
+induction e; try solve [left; constructor | right; intro H; inversion H].
+Case "exp_abs". 
+admit.
+(* destruct IHe.  *)
+(*   left; constructor. apply lc_val in v. constructor. apply lc_ascend with 0... *)
+(*   right; intro. inversion H. inversion H1. subst. apply f. *)
+Case "exp_obj".
+  induction l. left... constructor; constructor.
+  inversion H. inversion H2; subst. admit.
+  right. intro. inversion H0. inversion H5. apply H4...
+Qed.
+
 Inductive E : Set :=
-  | E_hole  : E
-  | E_app_1 : E -> exp -> E
-  | E_app_2 : forall (v : exp), val v -> E -> E
-  | E_succ  : E -> E
-  | E_not   : E -> E
-  | E_if    : E -> exp -> exp -> E
-  | E_label : atom -> E -> E
-  | E_break : atom -> E -> E
-  | E_ref   : E -> E
-  | E_deref : E -> E
+  | E_hole    : E
+  | E_app_1   : E -> exp -> E
+  | E_app_2   : forall (v : exp), val v -> E -> E
+  | E_succ    : E -> E
+  | E_not     : E -> E
+  | E_if      : E -> exp -> exp -> E
+  | E_label   : atom -> E -> E
+  | E_break   : atom -> E -> E
+  | E_ref     : E -> E
+  | E_deref   : E -> E
   | E_setref1 : E -> exp -> E
   | E_setref2 : forall (v : exp), val v -> E -> E
   | E_catch   : E -> exp -> E
   | E_throw   : E -> E
   | E_seq   : E -> exp -> E
-  | E_finally  : E -> exp -> E.
+  | E_finally  : E -> exp -> E
+  | E_obj     : forall (vs : list (string * exp)) (es : list (string * exp)), 
+                  (Forall val (values vs)) -> string -> E -> E.
 
 Inductive pot_redex : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> pot_redex (exp_app e1 e2)
@@ -231,7 +474,10 @@ Inductive decompose : exp -> E -> exp -> Prop :=
       decompose (exp_seq e1 e2) (E_seq E e2) ae
   | cxt_finally : forall E e1 e2 ae,
       decompose e1 E ae ->
-      decompose (exp_finally e1 e2) (E_finally E e2) ae.
+      decompose (exp_finally e1 e2) (E_finally E e2) ae
+  | cxt_obj  : forall vs es k e E e' (are_vals : Forall val (values vs)),
+      decompose e E e' ->
+      decompose (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e'.
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_hole : forall e,
@@ -259,7 +505,9 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
   | cxt1_throw : forall e,
       decompose1 (exp_throw e) (E_throw E_hole) e
   | cxt1_seq   : forall e1 e2,
-      decompose1 (exp_seq e1 e2) (E_seq E_hole e2) e1.
+      decompose1 (exp_seq e1 e2) (E_seq E_hole e2) e1
+  | cxt1_obj  : forall vs es k e E (are_vals : Forall val (values vs)),
+      decompose1 (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e.
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
@@ -278,6 +526,7 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_throw cxt    => exp_throw (plug e cxt)
   | E_seq cxt e2   => exp_seq (plug e cxt) e2
   | E_finally cxt e2 => exp_finally (plug e cxt) e2
+  | E_obj vs es _ k cxt => exp_obj (vs++(k,plug e cxt)::es)
 end.
 
 Fixpoint delta exp := match exp with
@@ -344,11 +593,6 @@ Inductive contract :  exp -> exp -> Prop :=
       val v ->
       contract (exp_finally (exp_break x v) e) (exp_seq e (exp_break x v)).
 
-Inductive stored_val : Set :=
-  | val_with_proof : forall (v : exp), val v -> stored_val.
-
-Definition sto := AtomEnv.t stored_val.
-
 Inductive step : sto -> exp -> sto -> exp -> Prop :=
   (* Slightly strange: exp_err -> exp_err -> exp_err -> ... *)
   | step_err : forall s e E,
@@ -409,7 +653,8 @@ Tactic Notation "exp_cases" tactic(first) ident(c) :=
     | Case_aux c "exp_catch"
     | Case_aux c "exp_throw"
     | Case_aux c "exp_seq"
-    | Case_aux c "exp_finally" ].
+    | Case_aux c "exp_finally"
+    | Case_aux c "exp_obj" ].
 Tactic Notation "lc_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "lc_fvar"
@@ -431,14 +676,16 @@ Tactic Notation "lc_cases" tactic(first) ident(c) :=
     | Case_aux c "lc_catch"
     | Case_aux c "lc_throw"
     | Case_aux c "lc_seq"
-    | Case_aux c "lc_finally" ].
+    | Case_aux c "lc_finally"
+    | Case_aux c "lc_obj" ].
 Tactic Notation "val_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "val_abs"
     | Case_aux c "val_nat"
     | Case_aux c "val_fvar"
     | Case_aux c "val_bool"
-    | Case_aux c "val_loc" ].
+    | Case_aux c "val_loc"
+    | Case_aux c "val_obj" ].
 Tactic Notation "E_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "E_hole"
@@ -454,7 +701,8 @@ Tactic Notation "E_cases" tactic(first) ident(c) :=
     | Case_aux c "E_setref1"
     | Case_aux c "E_setref2"
     | Case_aux c "E_seq"
-    | Case_aux c "E_finally" ].
+    | Case_aux c "E_finally"
+    | Case_aux c "E_obj" ].
 Tactic Notation "redex_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "redex_app"
@@ -488,7 +736,8 @@ Tactic Notation "decompose_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose_throw"
     | Case_aux c "decompose_catch"
     | Case_aux c "decompose_seq"
-    | Case_aux c "decompose_finally" ].
+    | Case_aux c "decompose_finally"
+    | Case_aux c "decompose_obj" ].
 Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "decompose1_hole"
@@ -503,7 +752,8 @@ Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose1_set1"
     | Case_aux c "decompose1_set2"
     | Case_aux c "decompose1_throw"
-    | Case_aux c "decompose1_seq" ].
+    | Case_aux c "decompose1_seq"
+    | Case_aux c "decompose1_obj" ].
 Tactic Notation "contract_cases" tactic(first) ident(c) :=
   first;
     [ Case_aux c "contract_succ"
@@ -537,9 +787,8 @@ Tactic Notation "step_cases" tactic(first) ident(c) :=
   | Case_aux c "step_setref"
   | Case_aux c "step_setref_err" ].
 
-Hint Constructors decompose E val exp pot_redex exp val pot_redex lc' contract
+Hint Constructors decompose E val exp pot_redex exp val pot_redex contract
                   step decompose1 stored_val.
-Hint Unfold open lc.
 
 Lemma decompose_pot_redex : forall e E ae,
   decompose e E ae -> pot_redex ae.
@@ -548,7 +797,7 @@ Proof with auto. intros. induction H... Qed.
 Lemma plug_ok : forall e E e',
   decompose e E e' -> plug e' E = e.
 Proof.
-intros.
+intros. Print decompose.
 decompose_cases (induction H) Case; simpl; try (auto || rewrite -> IHdecompose; auto).
 Qed.
 
@@ -558,17 +807,39 @@ Ltac destruct_decomp e := match goal with
   | _ => fail
 end.
 
+Lemma Forall_in : forall (A : Set) (l : list A) (P : A -> Prop) e, Forall P l -> In e l -> P e.
+Proof with auto.
+intros. induction H. inversion H0.
+inversion H0. subst. auto. auto.
+Qed.
+
+Lemma in_middle : forall A (l1 : list A) e l2, In e (l1 ++ e :: l2).
+intros.
+induction l1. simpl; left; auto. simpl. right; auto.
+Qed.
+
 Lemma decompose_lc : forall E e ae,
   lc e ->
   decompose e E ae ->
   lc ae.
-Proof. intros. decompose_cases (induction H0) Case; inversion H; eauto. Qed.
+Proof. intros. decompose_cases (induction H0) Case; try solve [inversion H; eauto | auto].
+Case "decompose_obj".
+  apply IHdecompose. apply Forall_in with (values (vs ++ (k, e) :: es)). simpl.
+  unfold lc in H. admit.
+  unfold values; rewrite map_app; simpl; apply in_middle.
+Qed.
 
 Lemma decompose1_lc : forall E e ae,
   lc e ->
   decompose1 e E ae ->
   lc ae.
-Proof. intros. decompose1_cases (induction H0) Case; inversion H; eauto. Qed.
+Proof. intros. decompose1_cases (induction H0) Case; try solve [inversion H; eauto | auto]. 
+Case "decompose1_obj".
+  apply Forall_in with (values (vs ++ (k, e) :: es)). admit.
+  unfold values. rewrite map_app. simpl.
+  apply in_middle.
+Qed.
+
 
 Ltac solve_decomp' := match goal with
   | [ H1 : lc' 0 ?e,
@@ -602,6 +873,10 @@ Case "lc_set".
   destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
   destruct_decomp e2. exists (E_setref2 H1 E)...
   destruct_decomp e1. right. exists (E_setref1 E e2)...
+Case "lc_obj".
+  left. inversion H0. symmetry in H2; unfold values in H2; apply map_eq_nil in H2. subst.
+  constructor... simpl. constructor.
+  constructor.
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
@@ -668,29 +943,12 @@ Qed.
 
 Hint Resolve lc_plug.
 
-Lemma lc_val : forall v,
-  val v -> lc' 0 v.
-Proof with auto.
-intros. inversion H... Qed.
 
 Lemma lc_active : forall e,
   pot_redex e -> lc e.
 Proof. intros. unfold lc. inversion H; auto using lc_val. Qed.
 
-Hint Resolve lc_active lc_val.
-
-Lemma lc_ascend : forall k k' e, k' >= k -> lc' k e -> lc' k' e.
-Proof with auto.
-intros.
-generalize dependent k'.
-lc_cases (induction H0) Case...
-Case "lc_bvar".
-  intros. apply lc_bvar. omega.
-Case "lc_abs".
-  intros. apply lc_abs. apply IHlc'. omega.
-Case "lc_catch".
-  intros. apply lc_catch... apply IHlc'2. omega.
-Qed.
+Hint Resolve lc_active.
 
 Lemma lc_open : forall k e u,
   lc' (S k) e ->
