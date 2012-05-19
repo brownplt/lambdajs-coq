@@ -13,6 +13,7 @@ Require Import Coq.Structures.OrderedType.
 Require Import Coq.MSets.MSetList.
 Require Import Coq.FSets.FMapList.
 Require Import Coq.Strings.String.
+Require Import Coq.Logic.Decidable.
 Require Import Omega.
 Require Import SfLib.
 Set Implicit Arguments.
@@ -23,6 +24,7 @@ Module Type ATOM.
   Declare Module Atom_as_OT : UsualOrderedType with Definition t := atom.
   Declare Module Ordered : Coq.Structures.OrderedType.OrderedType 
     with Definition t := atom.
+  Module OrderedTypeFacts := Coq.Structures.OrderedType.OrderedTypeFacts (Ordered).
   Parameter atom_fresh_for_list : forall (xs : list atom), 
     exists x : atom, ~ List.In x xs.
 
@@ -34,6 +36,7 @@ Module Type STRING.
   Declare Module String_as_OT : UsualOrderedType with Definition t := string.
   Declare Module Ordered : Coq.Structures.OrderedType.OrderedType
     with Definition t := string.
+  Module OrderedTypeFacts := Coq.Structures.OrderedType.OrderedTypeFacts (Ordered).
 
 End STRING.
 
@@ -48,7 +51,7 @@ Definition string := String.string.
 
 Section Definitions.
 
-Inductive Forall {A} (P:A->Type) : list A -> Type :=
+Inductive Forall {A:Set} (P:A->Type) : list A -> Prop :=
  | Forall_nil : Forall P nil
  | Forall_cons : forall x l, P x -> Forall P l -> Forall P (x::l).
 Hint Constructors Forall.
@@ -130,6 +133,9 @@ fix exp_rec' (e : exp) {struct e} : P e :=
   end.
 Definition exp_rec := fun (P : exp -> Set) => exp_rect (P := P).
 Definition exp_ind := fun (P : exp -> Prop) => exp_rect (P := P).
+
+Lemma exp_eq_dec : forall e1 e2 : exp, {e1 = e2} + {~ e1 = e2}. Admitted.
+
 
 Definition fieldnames l := map (@fst string exp) l.
 Definition values l := map (@snd string exp) l.
@@ -328,8 +334,6 @@ Inductive tagof : exp -> tag -> Prop :=
   | tag_loc  : forall l, tagof (exp_loc l) TagLoc
   | tag_obj  : forall l, tagof (exp_obj l) TagObj.
 
-Require Import Coq.Logic.Decidable.
-
 Hint Unfold open lc.
 Hint Constructors lc'.
 
@@ -374,20 +378,76 @@ Proof.
   destruct e; destruct t; try solve  [ auto | right; intros; inversion H ].
 Qed.
 
+Lemma forall_dec_dec_exists : forall (A : Set) P (l : list A), (forall a1 a2 : A, {a1 = a2} + {~ a1 = a2}) 
+  -> Forall (fun e => {P e} + {~ P e}) l
+  -> decidable (exists e, In e l /\ P e).
+Proof with eauto.
+intros. unfold decidable in *. induction H0. right; intro. inversion H0. inversion H1. inversion H2.
+inversion H0. left. exists x. split... constructor...
+inversion IHForall. inversion H3. left; exists x0. inversion H4; split... assert (D := H x x0). 
+destruct D. subst. contradiction. right. auto.
+right. intro. apply H3. inversion H4. exists x0. inversion H5; split... assert (D := H x x0). 
+destruct D. subst. contradiction. inversion H6. contradiction. auto.
+Qed.
+
+Lemma decide_lc : forall e, forall n, { lc' n e } + { ~ lc' n e}.
+Proof with eauto.
+induction e; try solve [ 
+  intro; left; auto
+| intro; assert (D := IHe n); inversion D; [ left; constructor; auto| right; intro B; inversion B; contradiction ]
+| intro; assert (D := IHe (S n)); inversion D; 
+  [ left; constructor; auto | right; intro B; inversion B; contradiction ]
+| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 n); inversion D1; 
+  [ inversion D2; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
+    | right; intro B; inversion B; contradiction ]
+| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 (S n)); inversion D1; 
+  [ inversion D2; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
+    | right; intro B; inversion B; contradiction ]
+| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 n); assert (D3 := IHe3 n); inversion D1; 
+  [ inversion D2; 
+    [ inversion D3; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
+      | right; intro B; inversion B; contradiction ] 
+    | right; intro B; inversion B; contradiction ]
+].
+Case "exp_bvar".
+intro. assert ({ n0 <= n } + { n0 > n }). apply Coq.Arith.Compare_dec.le_gt_dec.
+inversion H. right. intro. inversion H1. subst. omega.
+left. constructor. auto.
+Case "exp_obj".
+intro. assert (Forall (fun e => {lc' n e} + {~ lc' n e}) (map (snd (B:=exp)) l)).
+induction H. constructor. apply Forall_cons. apply H. apply IHForall.
+eapply forall_dec_dec_exists in H0. unfold decidable in H0. 
+(* DAMN YOU COQ -- WHY WON'T THIS GO THROUGH? *)
+(* inversion IHe1. inversion IHe2. clear IHe1 IHe2.  *)
+admit.
+apply exp_eq_dec.
+Qed.
+
+Lemma forall_dec_dec_forall : forall (A : Set) (P : A -> Prop) (l : list A), (forall a1 a2 : A, {a1 = a2} + {~ a1 = a2}) 
+  -> Forall (fun e => {P e} + {~ P e}) l
+  -> (Forall P l) \/ ~ (Forall P l).
+Proof with eauto.
+induction l. intros. left; constructor.
+intros. inversion H0. inversion H3. subst. 
+assert (Forall P l \/ ~ Forall P l). apply IHl. apply H. auto.
+inversion H1. left. constructor... right. intro. apply H2. inversion H6...
+right. intro. apply H5. inversion H6...
+Qed.
+
 Lemma decide_val : forall e, { val e } + { ~ val e }.
 Proof with eauto.
 unfold not. intro. 
 induction e; try solve [left; constructor | right; intro H; inversion H].
 Case "exp_abs". 
-admit.
-(* destruct IHe.  *)
-(*   left; constructor. apply lc_val in v. constructor. apply lc_ascend with 0... *)
-(*   right; intro. inversion H. inversion H1. subst. apply f. *)
+induction IHe. left. constructor. constructor. apply lc_ascend with 0...
+assert ({lc' 1 e } + {~ lc' 1 e}). apply decide_lc.
+inversion H. left; constructor... right; intro. apply H0. inversion H1. inversion H3. auto.
 Case "exp_obj".
-  induction l. left... constructor; constructor.
-  inversion H. inversion H2; subst. admit.
-  right. intro. inversion H0. inversion H5. apply H4...
+apply (forall_dec_dec_forall val (l:=(map (@snd string exp) l)) exp_eq_dec) in H.
+(* DAMN YOU COQ AGAIN!! inversion H. *)
+admit.
 Qed.
+
 
 Inductive E : Set :=
   | E_hole    : E
@@ -865,6 +925,7 @@ unfold lc in H.
 remember 0.
 lc_cases (induction H) Case; intros; subst; try solve_decomp...
 Case "lc_bvar". inversion H.
+Case "lc_abs". left. constructor. constructor. auto.
 Case "lc_app".
   destruct IHlc'1. auto. right...  destruct IHlc'2. auto. eauto.
   destruct_decomp e2. exists (E_app_2 H1 E)...
@@ -874,9 +935,9 @@ Case "lc_set".
   destruct_decomp e2. exists (E_setref2 H1 E)...
   destruct_decomp e1. right. exists (E_setref1 E e2)...
 Case "lc_obj".
-  left. inversion H0. symmetry in H2; unfold values in H2; apply map_eq_nil in H2. subst.
-  constructor... simpl. constructor.
-  constructor.
+  inversion H0. symmetry in H2; unfold values in H2; apply map_eq_nil in H2. subst.
+  left; constructor... simpl. constructor.
+  constructor...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
