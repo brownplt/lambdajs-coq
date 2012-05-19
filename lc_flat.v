@@ -885,7 +885,7 @@ Lemma decompose_lc : forall E e ae,
 Proof. intros. decompose_cases (induction H0) Case; try solve [inversion H; eauto | auto].
 Case "decompose_obj".
   apply IHdecompose. apply Forall_in with (values (vs ++ (k, e) :: es)). simpl.
-  unfold lc in H. admit.
+  unfold lc in H. inversion H. auto.
   unfold values; rewrite map_app; simpl; apply in_middle.
 Qed.
 
@@ -895,7 +895,7 @@ Lemma decompose1_lc : forall E e ae,
   lc ae.
 Proof. intros. decompose1_cases (induction H0) Case; try solve [inversion H; eauto | auto]. 
 Case "decompose1_obj".
-  apply Forall_in with (values (vs ++ (k, e) :: es)). admit.
+  apply Forall_in with (values (vs ++ (k, e) :: es)). inversion H. auto.
   unfold values. rewrite map_app. simpl.
   apply in_middle.
 Qed.
@@ -937,7 +937,7 @@ Case "lc_set".
 Case "lc_obj".
   inversion H0. symmetry in H2; unfold values in H2; apply map_eq_nil in H2. subst.
   left; constructor... simpl. constructor.
-  constructor...
+  right. constructor...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
