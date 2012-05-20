@@ -1217,26 +1217,16 @@ generalize dependent k.
 exp_cases (induction e) Case; intros; try solve [simpl; inversion H; subst;  eauto].
 Case "exp_bvar".
   simpl. 
-  assert (k >= n \/ k < n). apply le_or_lt.
-  destruct H1.
-  SCase "k >= n".
-    assert ({ k = n } + { k <> n }). decide equality.
-    destruct H2.
-    SSCase "k = n".
-    assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
-    rewrite -> H2.  assert (k >= 0). omega.
-    apply lc_ascend with (k := 0) (k' := k)...
-    SSCase "k <> n".
-    assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
-    rewrite -> H2.
-    assert (n < k). omega. auto...
+  assert (H1 := Coq.Arith.Compare_dec.lt_eq_lt_dec k n).
+  destruct H1. destruct s.
   SCase "k < n".
-    assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
-    rewrite -> H2. apply lc_bvar.
-    clear H2.
-    inversion H; subst. 
-    assert False. omega.
-    inversion H2.
+    inversion H. omega.
+  SCase "k = n". 
+    rewrite <- beq_nat_true_iff in e.
+    rewrite -> e.  apply lc_ascend with (k := 0) (k' := k)... omega.
+  SCase "k > n". Check beq_nat.
+    assert (beq_nat k n = false). rewrite -> beq_nat_false_iff... omega.
+    rewrite -> H1...
 Case "exp_obj".
   simpl. unfold map_values. apply forall_map_comm in H. constructor. 
   SCase "NoDup". 
