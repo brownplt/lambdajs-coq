@@ -596,17 +596,18 @@ induction e; intro; try solve [
 | solve by inverting 3 (constructor) (IHe1 n) (IHe2 n) (IHe3 n)
 ].
 Case "exp_bvar".
-intro. assert (decidable (n0 <= n)). apply Coq.Arith.Compare_dec.dec_le.
-inversion H. right. intro. inversion H1. omega.
-left. constructor. omega.
+  destruct (dec_le n0 n). 
+  right. intro. inversion H0. omega.
+  left. constructor. omega.
 Case "exp_obj".
-intro. assert (Forall (fun e => lc' n e \/ ~ lc' n e) (map (snd (B:=exp)) l)).
-induction H. constructor. apply Forall_cons. apply H. apply IHForall.
-eapply forall_dec_dec_forall in H0. inversion H0. 
-assert (ND := dec_no_dup_strings (fieldnames l)).
-inversion ND.
-left. constructor. auto. unfold values... right; intro; apply H2. inversion H3...
-right. intro. apply H1. inversion H2. apply H6.
+  assert (Forall (fun e => lc' n e \/ ~ lc' n e) (map (snd (B:=exp)) l)).
+    induction H. constructor. apply Forall_cons. apply H. apply IHForall.
+  apply forall_dec_dec_forall in H0. inversion H0. 
+  SCase "Everything in l is locally closed".
+    destruct (dec_no_dup_strings (fieldnames l)).
+    SSCase "Field names are distinct". left. constructor. auto. unfold values... 
+    SSCase "Field names are not distinct". right; intro; apply H2. inversion H3...
+  SCase "Not everything in l is locally closed". right. intro. apply H1. inversion H2. apply H6.
 Qed.
 
 
