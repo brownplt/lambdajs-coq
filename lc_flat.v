@@ -160,11 +160,48 @@ Lemma snd_split_cons : forall A B a b (l : list (A*B)), snd (split ((a, b) :: l)
   intros. simpl. rewrite (split_components l); simpl. reflexivity.
 Qed.
 
+Lemma fst_split_map_snd : forall A B C (l : list (A*B)) (P : B -> C),
+  fst (split (map (fun ab => (fst ab, P (snd ab))) l)) = fst (split l).
+Proof with eauto.
+  induction l; intros. reflexivity.
+  destruct a as (a,b). simpl. 
+  rewrite (split_components l). rewrite (split_components (map (fun ab => (fst ab, P (snd ab))) l)). simpl.
+  f_equal. apply IHl.
+Qed.
+
+Lemma snd_split_map_fst : forall A B C (l : list (A*B)) (P : A -> C),
+  snd (split (map (fun ab => (P (fst ab), snd ab)) l)) = snd (split l).
+Proof with eauto.
+  induction l; intros. reflexivity.
+  destruct a as (a,b). simpl. 
+  rewrite (split_components l). rewrite (split_components (map (fun ab => (P (fst ab), snd ab)) l)). simpl.
+  f_equal. apply IHl.
+Qed.
+
+
+Lemma forall_app : forall A (l1 : list A) l2 P, Forall P (l1 ++ l2) <-> Forall P l1 /\ Forall P l2.
+Proof with eauto.
+intros. split. induction l1. simpl... intro. inversion H. split. constructor... apply (IHl1 H3). apply (IHl1 H3).
+intros. inversion H. induction l1. simpl... constructor. inversion H0... fold (l1 ++ l2). apply IHl1. split...
+inversion H0... inversion H0...
+Qed.
+
 Lemma forall_map_comm : forall A B (l : list A) P (f : A -> B), Forall P (map f l) <-> Forall (fun x => P (f x)) l.
 Proof with eauto.
   intros; induction l. simpl. split; intros; constructor.
   split. intros. simpl in H. inversion H. constructor... apply IHl...
   intros. inversion H. simpl. constructor... apply IHl...
+Qed.
+
+Lemma Forall_in : forall A (l : list A) (P : A -> Prop) e, Forall P l -> In e l -> P e.
+Proof with auto.
+intros. induction H. inversion H0.
+inversion H0. subst. auto. auto.
+Qed.
+
+Lemma in_middle : forall A (l1 : list A) e l2, In e (l1 ++ e :: l2).
+intros.
+induction l1. simpl; left; auto. simpl. right; auto.
 Qed.
 
 End ListLemmas.
@@ -250,24 +287,23 @@ fix exp_rec' (e : exp) {struct e} : P e :=
 
 
 Ltac destruct_and_solve' e := destruct e; [idtac | right; intro Neq; inversion Neq; contradiction].
-Tactic Notation "solve" "by" "destruction" "1" constr(e) := destruct_and_solve' e; left; subst; auto.
-Tactic Notation "solve" "by" "destruction" "2" constr(e1) constr(e2) := 
-  destruct_and_solve' e1; solve by destruction 1 e2.
-Tactic Notation "solve" "by" "destruction" "3" constr(e1) constr(e2) constr (e3) := 
-  destruct_and_solve' e1; solve by destruction 2 e2 e3.
+Tactic Notation "solve" "by" "destruction" "1" tactic(t) constr(e) := destruct_and_solve' e; left; t; auto.
+Tactic Notation "solve" "by" "destruction" "2" tactic(t) constr(e1) constr(e2) := 
+  destruct_and_solve' e1; solve by destruction 1 (t) e2.
+Tactic Notation "solve" "by" "destruction" "3" tactic(t) constr(e1) constr(e2) constr (e3) := 
+  destruct_and_solve' e1; solve by destruction 2 (t) e2 e3.
 
 Lemma exp_eq_dec : forall e1 e2 : exp, e1 = e2 \/ ~ e1 = e2.
 Proof with eauto.
 induction e1; induction e2; try solve [
   left; reflexivity | right; congruence
-  | solve by destruction 1 (IHe1 e2)
-  | solve by destruction 2 (IHe1_1 e2_1) (IHe1_2 e2_2)
-  | solve by destruction 3 (IHe1_1 e2_1) (IHe1_2 e2_2) (IHe1_3 e2_3)
-  | match goal with | [ H1 : atom, H2 : atom |- _ ] => 
-      try solve [solve by destruction 1 (Atom.atom_dec_eq H1 H2)
-                |solve by destruction 2 (Atom.atom_dec_eq H1 H2) (IHe1 e2)] end 
-  | match goal with | [ H1 : loc, H2 : loc |- _ ] => solve by destruction 1 (Atom.atom_dec_eq H1 H2) end 
-  | match goal with | [ H1 : nat, H2 : nat |- _ ] => solve by destruction 1 (eq_nat_dec H1 H2) end ].
+  | solve by destruction 1 subst (IHe1 e2)
+  | solve by destruction 2 subst (IHe1_1 e2_1) (IHe1_2 e2_2)
+  | solve by destruction 3 subst (IHe1_1 e2_1) (IHe1_2 e2_2) (IHe1_3 e2_3)
+  | solve by destruction 1 subst (Atom.atom_dec_eq a a0)
+  | solve by destruction 2 subst (Atom.atom_dec_eq a a0) (IHe1 e2)  
+  | solve by destruction 1 subst (Atom.atom_dec_eq a a0) 
+  | solve by destruction 1 subst (eq_nat_dec n n0) ].
 Case "exp_bool".
 destruct b; destruct b0; try solve [left; reflexivity | right; congruence].
 Case "exp_obj".
@@ -539,24 +575,24 @@ inversion DecIn. right. intro. inversion H1. contradiction. left. constructor...
 right. intro; inversion H0; contradiction.
 Qed.
 
+Ltac inverting_and_solve' e := 
+  let D := fresh "D" in let Neq := fresh "Neq" in 
+    assert (D := e); inversion D; [idtac | right; intro Neq; inversion Neq; contradiction].
+Tactic Notation "solve" "by" "inverting" "1" tactic(t) constr(e) := inverting_and_solve' e; left; t; auto.
+Tactic Notation "solve" "by" "inverting" "2" tactic(t) constr(e1) constr(e2) := 
+  inverting_and_solve' e1; solve by inverting 1 (t) e2.
+Tactic Notation "solve" "by" "inverting" "3" tactic(t) constr(e1) constr(e2) constr (e3) := 
+  inverting_and_solve' e1; solve by inverting 2 (t) e2 e3.
+
 Lemma decide_lc : forall e, forall n, lc' n e \/  ~ lc' n e.
 Proof with eauto.
-induction e; try solve [ 
-  intro; left; auto
-| intro; assert (D := IHe n); inversion D; [ left; constructor; auto| right; intro B; inversion B; contradiction ]
-| intro; assert (D := IHe (S n)); inversion D; 
-  [ left; constructor; auto | right; intro B; inversion B; contradiction ]
-| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 n); inversion D1; 
-  [ inversion D2; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
-    | right; intro B; inversion B; contradiction ]
-| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 (S n)); inversion D1; 
-  [ inversion D2; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
-    | right; intro B; inversion B; contradiction ]
-| intro; assert (D1 := IHe1 n); assert (D2 := IHe2 n); assert (D3 := IHe3 n); inversion D1; 
-  [ inversion D2; 
-    [ inversion D3; [ left; constructor; auto | right; intro B; inversion B; contradiction ] 
-      | right; intro B; inversion B; contradiction ] 
-    | right; intro B; inversion B; contradiction ]
+induction e; intro; try solve [ 
+  left; auto
+| solve by inverting 1 (constructor) (IHe n)
+| solve by inverting 1 (constructor) (IHe (S n))
+| solve by inverting 2 (constructor) (IHe1 n) (IHe2 n)
+| solve by inverting 2 (constructor) (IHe1 n) (IHe2 (S n))
+| solve by inverting 3 (constructor) (IHe1 n) (IHe2 n) (IHe3 n)
 ].
 Case "exp_bvar".
 intro. assert (decidable (n0 <= n)). apply Coq.Arith.Compare_dec.dec_le.
@@ -1013,17 +1049,6 @@ Ltac destruct_decomp e := match goal with
   | _ => fail
 end.
 
-Lemma Forall_in : forall A (l : list A) (P : A -> Prop) e, Forall P l -> In e l -> P e.
-Proof with auto.
-intros. induction H. inversion H0.
-inversion H0. subst. auto. auto.
-Qed.
-
-Lemma in_middle : forall A (l1 : list A) e l2, In e (l1 ++ e :: l2).
-intros.
-induction l1. simpl; left; auto. simpl. right; auto.
-Qed.
-
 Lemma decompose_lc : forall E e ae,
   lc e ->
   decompose e E ae ->
@@ -1082,16 +1107,22 @@ Case "lc_set".
 Case "lc_obj".
   assert (forall x : string * exp, In x l -> decidable (val (snd x))). intros; apply decide_val.
   assert (Split := (take_while l (fun kv => val (snd kv)) H1)).
-  inversion Split. left. constructor... unfold values; rewrite map_snd_snd_split. apply forall_snd_comm...
-  inversion H2; clear H2. inversion H3; clear H3. inversion H2; clear H2. inversion H3; clear H3.
-  inversion H4; clear H4.
-  right. remember x1 as x1'; destruct x1'.
-  assert (Forall val (values x)). unfold values; rewrite map_snd_snd_split; apply forall_snd_comm...
-  assert (val e \/ (exists E ae, decompose e E ae)).   assert (Forall (fun e => val e \/ exists E ae, decompose e E ae) (map (snd (B:=exp)) l)). induction H0. constructor. constructor. apply H0... auto. clear H0.
-  rewrite Forall_forall in H6. apply H6.  rewrite map_snd_snd_split. rewrite H2.
-  rewrite snd_split_comm. simpl. apply in_middle. simpl in H5. inversion H6. contradiction. inversion H7. inversion H8.
-
-  exists (E_obj x x0 H4 s x2). exists x3. rewrite H2. apply cxt_obj. auto.
+  inversion Split. 
+  SCase "Everything in (exp_obj l) is already a value".
+    left. constructor... unfold values; rewrite map_snd_snd_split. apply forall_snd_comm...
+  SCase "Something in (exp_obj l) is not yet a value".
+    right. inversion H2; clear H2. inversion H3; clear H3. 
+    inversion H2; clear H2. inversion H3; clear H3. inversion H4; clear H4.
+    remember x1 as x1'; destruct x1'.
+    assert (Forall val (values x)). unfold values; rewrite map_snd_snd_split; apply forall_snd_comm...
+    assert (val e \/ (exists E ae, decompose e E ae)).   
+      assert (Forall (fun e => val e \/ exists E ae, decompose e E ae) (map (snd (B:=exp)) l)). 
+      induction H0; constructor. apply H0... auto. clear H0.
+      rewrite Forall_forall in H6. apply H6.  rewrite map_snd_snd_split. rewrite H2.
+      rewrite snd_split_comm. simpl. apply in_middle. 
+    simpl in H5. inversion H6. contradiction. 
+    inversion H7. inversion H8. exists (E_obj x x0 H4 s x2). exists x3. 
+    rewrite H2. apply cxt_obj...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
@@ -1151,21 +1182,18 @@ Lemma lc_plug : forall E ae e e',
   lc e' ->
   decompose e E ae ->
   lc (plug e' E).
-Proof.
+Proof with auto.
 intros.
 decompose_cases (induction H1) Case;
  first [ inversion H; subst; simpl; unfold lc in *; constructor ; try solve_lc_plug; auto | auto ]. 
-unfold fieldnames in *. rewrite map_fst_fst_split. rewrite fst_split_comm. simpl.
-rewrite map_fst_fst_split in H3; rewrite fst_split_comm in H3; simpl in H3... auto.
-unfold values in *. rewrite map_snd_snd_split; rewrite snd_split_comm; simpl.
-rewrite map_snd_snd_split in H5; rewrite snd_split_comm in H5; simpl in H5...
-Lemma forall_app : forall A (l1 : list A) l2 P, Forall P (l1 ++ l2) <-> Forall P l1 /\ Forall P l2.
-Proof with eauto.
-intros. split. induction l1. simpl... intro. inversion H. split. constructor... apply (IHl1 H3). apply (IHl1 H3).
-intros. inversion H. induction l1. simpl... constructor. inversion H0... fold (l1 ++ l2). apply IHl1. split...
-inversion H0... inversion H0...
-Qed.
-rewrite forall_app. rewrite forall_app in H5. inversion H5. split; auto. inversion H4. constructor; auto.
+Case "decompose_obj".
+  SCase "Proving NoDup of fieldnames after plugging".
+  unfold fieldnames in *. rewrite map_fst_fst_split. rewrite fst_split_comm. simpl.
+  rewrite map_fst_fst_split in H3; rewrite fst_split_comm in H3; simpl in H3...
+  SCase "Proving all are values after plugging".
+  unfold values in *. rewrite map_snd_snd_split; rewrite snd_split_comm; simpl.
+  rewrite map_snd_snd_split in H5; rewrite snd_split_comm in H5; simpl in H5...
+  rewrite forall_app. rewrite forall_app in H5. inversion H5. split... inversion H4... 
 Qed.
 
 Hint Resolve lc_plug.
@@ -1204,25 +1232,19 @@ Case "exp_bvar".
     assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
     rewrite -> H2. apply lc_bvar.
     clear H2.
-    inversion H; subst.
+    inversion H; subst. 
     assert False. omega.
     inversion H2.
 Case "exp_obj".
-  simpl. unfold map_values.
-  constructor. SCase "NoDup". inversion H1. unfold fieldnames in *. rewrite map_fst_fst_split in *.
-    replace (fst (split (map (fun kv => (fst kv, open_rec k u (snd kv))) l))) with (fst (split l)). auto.
-  generalize dependent l0. induction l. simpl; reflexivity. simpl. destruct a as (a,b). simpl. rewrite (split_components l). simpl.
-  rewrite (split_components (map (fun kv => (fst kv, open_rec k u (snd kv))) l)). simpl. 
-  replace (fst (split (map (fun kv => (fst kv, open_rec k u (snd kv))) l))) with (fst (split l)). reflexivity.
-  apply IHl with l... inversion H... inversion H1. constructor. inversion H6... inversion H8...
-  rewrite fst_split_cons in H3. inversion H3...
-  unfold values in *. rewrite map_snd_snd_split. rewrite map_snd_snd_split in H5. rewrite snd_split_cons in H5.
-  inversion H5... 
-  SCase "values". unfold values.
-  apply forall_map_comm. apply forall_map_comm. apply forall_map_comm in H. simpl. 
-  rewrite Forall_forall. rewrite Forall_forall in H.
-  intros. apply H... inversion H1. rewrite Forall_forall in H6. apply H6. 
-  destruct x as (s, e). subst. unfold values. rewrite map_snd_snd_split. apply in_split_r...
+  simpl. unfold map_values. apply forall_map_comm in H. constructor. 
+  SCase "NoDup". 
+    inversion H1. unfold fieldnames in *. rewrite map_fst_fst_split in *.
+    rewrite fst_split_map_snd...
+  SCase "values". 
+    unfold values. apply forall_map_comm. apply forall_map_comm. simpl. 
+    rewrite Forall_forall. rewrite Forall_forall in H.
+    intros. apply H... inversion H1. rewrite Forall_forall in H6. apply H6. 
+    destruct x as (s, e). subst. unfold values. rewrite map_snd_snd_split. apply in_split_r...
 Qed.
 
 Lemma lc_contract : forall ae e,
