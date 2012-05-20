@@ -32,7 +32,19 @@ Module Type ATOM.
 
 End ATOM.
 
-Module LC (Import Atom : ATOM).
+Module Type STRING.
+
+ Parameter string : Set.
+ Declare Module String_as_OT : UsualOrderedType with Definition t := string.
+ Declare Module Ordered : Coq.Structures.OrderedType.OrderedType
+   with Definition t := string.
+ Module OrderedTypeFacts := Coq.Structures.OrderedType.OrderedTypeFacts (Ordered).
+ Parameter string_eq_dec : forall s1 s2 : string, {s1 = s2} + {~ s1 = s2}.
+ Parameter string_dec_eq : forall s1 s2 : string, s1 = s2 \/ ~ s1 = s2.
+
+End STRING.
+
+Module LC (Import Atom : ATOM) (Import String : STRING).
 
 Module Atoms := Coq.MSets.MSetList.Make (Atom.Atom_as_OT).
 Module AtomEnv := Coq.FSets.FMapList.Make (Atom.Ordered).
@@ -206,7 +218,7 @@ Qed.
 assert (l = l0 \/ l <> l0).
 apply helper. intros. rewrite Forall_forall in H. 
 remember a1 as a1'; destruct a1'. remember a2 as a2'; destruct a2'.
-assert (EqS := string_dec s s0). inversion EqS; [auto | right; congruence].
+assert (EqS := string_dec_eq s s0). inversion EqS; [auto | right; congruence].
 assert (e = e0 \/ e <> e0). apply H. apply in_split_r in H1. simpl in H1. 
 replace (map (snd (B:=exp)) l) with (snd (split l)). auto. symmetry; apply map_snd_snd_split.
 inversion H4; [left; subst; auto | right; congruence].
@@ -455,12 +467,11 @@ Qed.
 Lemma dec_in : forall (l : list string) a, In a l \/ ~ In a l.
 Proof with eauto.
 induction l. intro; right; intro; inversion H.
-intro. assert (decidable (a = a0)). unfold decidable.
-assert ({a = a0} + {~ a = a0}). apply String.string_dec.
-destruct H; auto. inversion H.
+intro. assert (dec := string_dec_eq a a0).
+destruct dec; auto. inversion H.
  left; constructor...
  assert (H1 := IHl a0). inversion H1. left; right... 
- right. intro. apply H2. inversion H3... contradiction.
+ right. intro. apply H0. inversion H2... contradiction.
 Qed.
 
 Lemma dec_no_dup_strings : forall l : list string, NoDup l \/ ~ NoDup l. 
