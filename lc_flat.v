@@ -301,6 +301,7 @@ induction e1; induction e2; try solve [
   | solve by destruction 2 subst (IHe1_1 e2_1) (IHe1_2 e2_2)
   | solve by destruction 3 subst (IHe1_1 e2_1) (IHe1_2 e2_2) (IHe1_3 e2_3)
   | solve by destruction 1 subst (Atom.atom_dec_eq a a0)
+  | solve by destruction 1 subst (Atom.atom_dec_eq l l0)
   | solve by destruction 2 subst (Atom.atom_dec_eq a a0) (IHe1 e2)  
   | solve by destruction 1 subst (Atom.atom_dec_eq a a0) 
   | solve by destruction 1 subst (eq_nat_dec n n0) ].
