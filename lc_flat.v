@@ -320,9 +320,9 @@ Inductive exp : Set :=
   | exp_seq   : exp -> exp -> exp
   | exp_finally : exp -> exp -> exp
   | exp_obj   : list (string * exp) -> exp
-  | exp_getfield : exp -> string -> exp
-  | exp_setfield : exp -> string -> exp -> exp
-  | exp_delfield : exp -> string -> exp.
+  | exp_getfield : exp -> exp -> exp
+  | exp_setfield : exp -> exp -> exp -> exp
+  | exp_delfield : exp -> exp -> exp.
 Reset exp_ind.
 
 Definition exp_ind := fun (P : exp -> Prop)
@@ -350,9 +350,9 @@ Definition exp_ind := fun (P : exp -> Prop)
   (rec_exp_seq : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_seq e e0))
   (rec_exp_finally : forall e : exp, P e -> forall e0 : exp, P e0 -> P (exp_finally e e0))
   (rec_exp_obj : forall l : list (string * exp), Forall P (map (@snd string exp) l) -> P (exp_obj l))
-  (rec_exp_getfield : forall o : exp, P o -> forall f : string, P (exp_getfield o f))
-  (rec_exp_setfield : forall o : exp, P o -> forall (f : string) (e : exp), P e -> P (exp_setfield o f e))
-  (rec_exp_delfield : forall o : exp, P o -> forall f : string, P (exp_delfield o f))
+  (rec_exp_getfield : forall o : exp, P o -> forall f : exp, P f -> P (exp_getfield o f))
+  (rec_exp_setfield : forall o : exp, P o -> forall f, P f -> forall e, P e -> P (exp_setfield o f e))
+  (rec_exp_delfield : forall o : exp, P o -> forall f : exp, P f -> P (exp_delfield o f))
   =>
 fix exp_rec' (e : exp) {struct e} : P e :=
   match e as e0 return (P e0) with
@@ -385,9 +385,9 @@ fix exp_rec' (e : exp) {struct e} : P e :=
         | nil => Forall_nil P
         | (_,tr)::rest => Forall_cons tr (exp_rec' tr) (forall_rec rest)
       end) l)
-  | exp_getfield o f => rec_exp_getfield o (exp_rec' o) f
-  | exp_setfield o f e => rec_exp_setfield o (exp_rec' o) f e (exp_rec' e)
-  | exp_delfield o f => rec_exp_delfield o (exp_rec' o) f
+  | exp_getfield o f => rec_exp_getfield o (exp_rec' o) f (exp_rec' f)
+  | exp_setfield o f e => rec_exp_setfield o (exp_rec' o) f (exp_rec' f) e (exp_rec' e)
+  | exp_delfield o f => rec_exp_delfield o (exp_rec' o) f (exp_rec' f)
   end.
 (* Definition exp_rec := fun (P : exp -> Set) => exp_rect (P := P). *)
 (* Definition exp_ind := fun (P : exp -> Prop) => exp_rect (P := P). *)
@@ -477,9 +477,9 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_seq e1 e2   => exp_seq (open_rec k u e1) (open_rec k u e2)
   | exp_finally e1 e2 => exp_finally (open_rec k u e1) (open_rec k u e2)
   | exp_obj l     => exp_obj (map_values (open_rec k u) l)
-  | exp_getfield o f => exp_getfield (open_rec k u o) f
-  | exp_setfield o f e => exp_setfield (open_rec k u o) f (open_rec k u e)
-  | exp_delfield o f => exp_delfield (open_rec k u o) f
+  | exp_getfield o f => exp_getfield (open_rec k u o) (open_rec k u f)
+  | exp_setfield o f e => exp_setfield (open_rec k u o) (open_rec k u f) (open_rec k u e)
+  | exp_delfield o f => exp_delfield (open_rec k u o) (open_rec k u f)
 end.
 
 
@@ -517,9 +517,9 @@ Inductive lc' : nat -> exp -> Prop :=
     lc' n e2 ->
     lc' n (exp_finally e1 e2)
   | lc_obj   : forall n l, NoDup (fieldnames l) -> Forall (lc' n) (values l) -> lc' n (exp_obj l)
-  | lc_getfield : forall n o f, lc' n o -> lc' n (exp_getfield o f)
-  | lc_setfield : forall n o f e, lc' n o -> lc' n e -> lc' n (exp_setfield o f e)
-  | lc_delfield : forall n o f, lc' n o -> lc' n (exp_delfield o f)
+  | lc_getfield : forall n o f, lc' n o -> lc' n f -> lc' n (exp_getfield o f)
+  | lc_setfield : forall n o f e, lc' n o -> lc' n f -> lc' n e -> lc' n (exp_setfield o f e)
+  | lc_delfield : forall n o f, lc' n o -> lc' n f -> lc' n (exp_delfield o f)
 .
 
 Reset lc'_ind.
@@ -562,9 +562,9 @@ Definition lc'_ind := fun (P : nat -> exp -> Prop)
          lc' n e1 -> P n e1 -> lc' n e2 -> P n e2 -> P n (exp_finally e1 e2))
   (rec_lc_obj : forall (n : nat) (l : list (string * exp)),
          NoDup (fieldnames l) -> Forall (P n) (map (@snd string exp) l) -> P n (exp_obj l)) 
-  (rec_lc_getfield : forall (n : nat) (o : exp), P n o -> forall f : string, P n (exp_getfield o f))
-  (rec_lc_setfield : forall (n : nat) (o : exp), P n o -> forall (f : string) (e : exp), P n e -> P n (exp_setfield o f e))
-  (rec_lc_delfield : forall (n : nat) (o : exp), P n o -> forall f : string, P n (exp_delfield o f))
+  (rec_lc_getfield : forall (n : nat) o, P n o -> forall f, P n f -> P n (exp_getfield o f))
+  (rec_lc_setfield : forall (n : nat) o, P n o -> forall f, P n f -> forall e, P n e -> P n (exp_setfield o f e))
+  (rec_lc_delfield : forall (n : nat) o, P n o -> forall f, P n f -> P n (exp_delfield o f))
 =>
 fix lc'_ind' (n : nat) (e : exp) (l : lc' n e) {struct l} : P n e :=
   match l in (lc' n0 e0) return (P n0 e0) with
@@ -600,9 +600,9 @@ fix lc'_ind' (n : nat) (e : exp) (l : lc' n e) {struct l} : P n e :=
           | Forall_cons t l' isVal rest => 
             Forall_cons (A:=exp) (P:=P n0) (l:=l') t (lc'_ind' n0 t isVal) (forall_lc_ind l' rest)
         end) (map (@snd string exp) l0) pf_lc')
-  | lc_getfield n0 o f lc_o  => rec_lc_getfield n0 o (lc'_ind' n0 o lc_o) f
-  | lc_setfield n0 o f e lc_o lc_e => rec_lc_setfield n0 o (lc'_ind' n0 o lc_o) f e (lc'_ind' n0 e lc_e)
-  | lc_delfield n0 o f lc_o => rec_lc_delfield n0 o (lc'_ind' n0 o lc_o) f
+  | lc_getfield n0 o f lc_o lc_f  => rec_lc_getfield n0 o (lc'_ind' n0 o lc_o) f (lc'_ind' n0 f lc_f)
+  | lc_setfield n0 o f e lc_o lc_f lc_e => rec_lc_setfield n0 o (lc'_ind' n0 o lc_o) f (lc'_ind' n0 f lc_f) e (lc'_ind' n0 e lc_e)
+  | lc_delfield n0 o f lc_o lc_f => rec_lc_delfield n0 o (lc'_ind' n0 o lc_o) f (lc'_ind' n0 f lc_f)
   end.
 
 Definition lc e := lc' 0 e.
@@ -812,10 +812,13 @@ Inductive E : Set :=
   | E_finally  : E -> exp -> E
   | E_obj     : forall (vs : list (string * exp)) (es : list (string * exp)), 
                   (Forall val (values vs)) -> string -> E -> E
-  | E_getfield : E -> string -> E
-  | E_setfield1 : E -> string -> exp -> E
-  | E_setfield2 : forall (v : exp), val v -> string -> E -> E
-  | E_delfield : E -> string -> E
+  | E_getfield1 : E -> exp -> E
+  | E_getfield2 : forall (v : exp), val v -> E -> E
+  | E_setfield1 : E -> exp -> exp -> E
+  | E_setfield2 : forall (v : exp), val v -> E -> exp -> E
+  | E_setfield3 : forall (v f : exp), val v -> val f -> E -> E
+  | E_delfield1 : E -> exp -> E
+  | E_delfield2 : forall (v : exp), val v -> E -> E
 .
 
 Inductive pot_redex : exp -> Prop :=
@@ -834,9 +837,9 @@ Inductive pot_redex : exp -> Prop :=
   | redex_throw : forall v, val v -> pot_redex (exp_throw v)
   | redex_seq   : forall v e, val v -> lc e -> pot_redex (exp_seq v e)
   | redex_finally : forall v e, val v -> lc e -> pot_redex (exp_finally v e)
-  | redex_getfield : forall o f, val o -> pot_redex (exp_getfield o f)
-  | redex_setfield : forall o f e, val o -> val e -> pot_redex (exp_setfield o f e)
-  | redex_delfield : forall o f, val o -> pot_redex (exp_delfield o f)
+  | redex_getfield : forall o f, val o -> val f -> pot_redex (exp_getfield o f)
+  | redex_setfield : forall o f e, val o -> val f -> val e -> pot_redex (exp_setfield o f e)
+  | redex_delfield : forall o f, val o -> val f -> pot_redex (exp_delfield o f)
 .
 
 Inductive decompose : exp -> E -> exp -> Prop :=
@@ -891,18 +894,27 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_obj  : forall vs es k e E e' (are_vals : Forall val (values vs)),
       decompose e E e' ->
       decompose (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e'
-  | cxt_getfield : forall o f E ae,
+  | cxt_getfield1 : forall o f E ae,
       decompose o E ae ->
-      decompose (exp_getfield o f) (E_getfield E f) ae
+      decompose (exp_getfield o f) (E_getfield1 E f) ae
+  | cxt_getfield2 : forall o f E ae (pf_o : val o),
+      decompose f E ae ->
+      decompose (exp_getfield o f) (E_getfield2 pf_o E) ae
   | cxt_setfield1 : forall o f e E ae,
       decompose o E ae ->
       decompose (exp_setfield o f e) (E_setfield1 E f e) ae
   | cxt_setfield2 : forall o f e E ae (v: val o),
+      decompose f E ae ->
+      decompose (exp_setfield o f e) (E_setfield2 v E e) ae
+  | cxt_setfield3 : forall o f e E ae (v_o: val o) (v_f : val f),
       decompose e E ae ->
-      decompose (exp_setfield o f e) (E_setfield2 v f E) ae
-  | cxt_delfield : forall o f E ae,
+      decompose (exp_setfield o f e) (E_setfield3 v_o v_f E) ae
+  | cxt_delfield1 : forall o f E ae,
       decompose o E ae ->
-      decompose (exp_delfield o f) (E_delfield E f) ae
+      decompose (exp_delfield o f) (E_delfield1 E f) ae
+  | cxt_delfield2 : forall o f E ae (pf_o : val o),
+      decompose f E ae ->
+      decompose (exp_delfield o f) (E_delfield2 pf_o E) ae
 .
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
@@ -934,14 +946,20 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_seq e1 e2) (E_seq E_hole e2) e1
   | cxt1_obj  : forall vs es k e E (are_vals : Forall val (values vs)),
       decompose1 (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e
-  | cxt1_getfield : forall o f,
-      decompose1 (exp_getfield o f) (E_getfield E_hole f) o
+  | cxt1_getfield1 : forall o f,
+      decompose1 (exp_getfield o f) (E_getfield1 E_hole f) o
+  | cxt1_getfield2 : forall o f (v : val o),
+      decompose1 (exp_getfield o f) (E_getfield2 v E_hole) f
   | cxt1_setfield1 : forall o f e,
       decompose1 (exp_setfield o f e) (E_setfield1 E_hole f e) o
   | cxt1_setfield2 : forall o f e (v : val o),
-      decompose1 (exp_setfield o f e) (E_setfield2 v f E_hole) e
-  | cxt1_delfield : forall o f,
-      decompose1 (exp_delfield o f) (E_delfield E_hole f) o
+      decompose1 (exp_setfield o f e) (E_setfield2 v E_hole e) f
+  | cxt1_setfield3 : forall o f e (v_o : val o) (v_f : val f),
+      decompose1 (exp_setfield o f e) (E_setfield3 v_o v_f E_hole) e
+  | cxt1_delfield1 : forall o f,
+      decompose1 (exp_delfield o f) (E_delfield1 E_hole f) o
+  | cxt1_delfield2 : forall o f (v : val o),
+      decompose1 (exp_delfield o f) (E_delfield2 v E_hole) f
 .
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
@@ -962,10 +980,13 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_seq cxt e2   => exp_seq (plug e cxt) e2
   | E_finally cxt e2 => exp_finally (plug e cxt) e2
   | E_obj vs es _ k cxt => exp_obj (vs++(k,plug e cxt)::es)
-  | E_getfield cxt f => exp_getfield (plug e cxt) f
+  | E_getfield1 cxt f => exp_getfield (plug e cxt) f
+  | E_getfield2 v _ cxt => exp_getfield v (plug e cxt)
   | E_setfield1 cxt f e' => exp_setfield (plug e cxt) f e'
-  | E_setfield2 v _ f cxt => exp_setfield v f (plug e cxt)
-  | E_delfield cxt f => exp_delfield (plug e cxt) f
+  | E_setfield2 v _ cxt e' => exp_setfield v (plug e cxt) e'
+  | E_setfield3 v f _ _ cxt => exp_setfield v f (plug e cxt)
+  | E_delfield1 cxt f => exp_delfield (plug e cxt) f
+  | E_delfield2 v _ cxt => exp_delfield v (plug e cxt)
 end.
 
 Fixpoint delta exp := match exp with
@@ -1034,45 +1055,48 @@ Inductive contract :  exp -> exp -> Prop :=
   | contract_getfield : forall l f,
       val (exp_obj l) ->
       In f (fieldnames l) ->
-      contract (exp_getfield (exp_obj l) f) (lookup_assoc l f exp_err string_eq_dec)
+      contract (exp_getfield (exp_obj l) (exp_string f)) (lookup_assoc l f exp_err string_eq_dec)
   | contract_getfield_notfound : forall l f,
       val (exp_obj l) ->
       ~ In f (fieldnames l) -> ~ In __proto__ (fieldnames l) ->
-      contract (exp_getfield (exp_obj l) f) exp_undef
+      contract (exp_getfield (exp_obj l) (exp_string f)) exp_undef
   | contract_getfield_proto : forall l f,
       val (exp_obj l) ->
       ~ In f (fieldnames l) ->
       In __proto__ (fieldnames l) ->
-      contract (exp_getfield (exp_obj l) f) 
-        (exp_getfield (exp_deref (exp_getfield (exp_obj l) __proto__)) f)
-  | contract_getfield_err : forall v f,
+      contract (exp_getfield (exp_obj l) (exp_string f)) 
+        (exp_getfield (exp_deref (exp_getfield (exp_obj l) (exp_string __proto__))) (exp_string f))
+  | contract_getfield_err_notobj : forall v f,
       val v -> ~ tagof v TagObj -> contract (exp_getfield v f) exp_err
+  | contract_getfield_err_notstr : forall v f,
+      val v -> val f -> ~ tagof f TagString -> contract (exp_getfield v f) exp_err
   | contract_setfield_update : forall l f v,
       val (exp_obj l) ->
       val v ->
       In f (fieldnames l) ->
-      contract (exp_setfield (exp_obj l) f v) (exp_obj (update_assoc l f v string_eq_dec))
+      contract (exp_setfield (exp_obj l) (exp_string f) v) (exp_obj (update_assoc l f v string_eq_dec))
   | contract_setfield_add : forall l f v,
       val (exp_obj l) ->
       val v ->
       ~ In f (fieldnames l) ->
-      contract (exp_setfield (exp_obj l) f v) (exp_obj ((f,v)::l))
-  | contract_setfield_err : forall v f v',
-      val v -> ~ tagof v TagObj ->
-      contract (exp_setfield v f v') exp_err
+      contract (exp_setfield (exp_obj l) (exp_string f) v) (exp_obj ((f,v)::l))
+  | contract_setfield_err_notobj : forall v f e,
+      val v -> ~ tagof v TagObj -> contract (exp_setfield v f e) exp_err
+  | contract_setfield_err_notstr : forall v f e,
+      val v -> val f -> ~ tagof f TagString -> contract (exp_setfield v f e) exp_err
   | contract_delfield : forall l f,
       val (exp_obj l) ->
       In f (fieldnames l) ->
-      contract (exp_delfield (exp_obj l) f) 
+      contract (exp_delfield (exp_obj l) (exp_string f)) 
         (exp_obj (remove_fst f l string_eq_dec))
   | contract_delfield_notfound : forall l f,
       val (exp_obj l) ->
       ~ In f (fieldnames l) ->
-      contract (exp_delfield (exp_obj l) f) (exp_obj l)
-  | contract_delfield_err : forall v f,
-      val v ->
-      ~ tagof v TagObj ->
-      contract (exp_delfield v f) exp_err
+      contract (exp_delfield (exp_obj l) (exp_string f)) (exp_obj l)
+  | contract_delfield_err_notobj : forall v f,
+      val v -> ~ tagof v TagObj -> contract (exp_delfield v f) exp_err
+  | contract_delfield_err_notstr : forall v f,
+      val v -> val f -> ~ tagof f TagString -> contract (exp_delfield v f) exp_err
 .
 
 Inductive step : sto -> exp -> sto -> exp -> Prop :=
@@ -1202,10 +1226,13 @@ Tactic Notation "E_cases" tactic(first) ident(c) :=
     | Case_aux c "E_seq"
     | Case_aux c "E_finally"
     | Case_aux c "E_obj"
-    | Case_aux c "E_getfield"
+    | Case_aux c "E_getfield1"
+    | Case_aux c "E_getfield2"
     | Case_aux c "E_setfield1"
     | Case_aux c "E_setfield2"
-    | Case_aux c "E_delfield"
+    | Case_aux c "E_setfield3"
+    | Case_aux c "E_delfield1"
+    | Case_aux c "E_delfield2"
  ].
 Tactic Notation "redex_cases" tactic(first) ident(c) :=
   first;
@@ -1245,11 +1272,14 @@ Tactic Notation "decompose_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose_catch"
     | Case_aux c "decompose_seq"
     | Case_aux c "decompose_finally"
-    | Case_aux c "decompose_obj" 
-    | Case_aux c "decompose_getfield" 
-    | Case_aux c "decompose_setfield1" 
-    | Case_aux c "decompose_setfield2" 
-    | Case_aux c "decompose_delfield" 
+    | Case_aux c "decompose_obj"
+    | Case_aux c "decompose_getfield1"
+    | Case_aux c "decompose_getfield2"
+    | Case_aux c "decompose_setfield1"
+    | Case_aux c "decompose_setfield2"
+    | Case_aux c "decompose_setfield3"
+    | Case_aux c "decompose_delfield1" 
+    | Case_aux c "decompose_delfield2" 
 ].
 Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
   first;
@@ -1267,10 +1297,13 @@ Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
     | Case_aux c "decompose1_throw"
     | Case_aux c "decompose1_seq"
     | Case_aux c "decompose1_obj" 
-    | Case_aux c "decompose1_getfield" 
+    | Case_aux c "decompose1_getfield1" 
+    | Case_aux c "decompose1_getfield2" 
     | Case_aux c "decompose1_setfield1" 
     | Case_aux c "decompose1_setfield2" 
-    | Case_aux c "decompose1_delfield" 
+    | Case_aux c "decompose1_setfield3" 
+    | Case_aux c "decompose1_delfield1" 
+    | Case_aux c "decompose1_delfield2" 
 ].
 Tactic Notation "contract_cases" tactic(first) ident(c) :=
   first;
@@ -1298,13 +1331,16 @@ Tactic Notation "contract_cases" tactic(first) ident(c) :=
     | Case_aux c "contract_getfield"
     | Case_aux c "contract_getfield_notfound"
     | Case_aux c "contract_getfield_proto"
-    | Case_aux c "contract_getfield_err"
+    | Case_aux c "contract_getfield_err_notobj"
+    | Case_aux c "contract_getfield_err_notstr"
     | Case_aux c "contract_setfield_update"
     | Case_aux c "contract_setfield_add"
-    | Case_aux c "contract_setfield_err"
+    | Case_aux c "contract_setfield_err_notobj"
+    | Case_aux c "contract_setfield_err_notstr"
     | Case_aux c "contract_delfield"
     | Case_aux c "contract_delfield_notfound"
-    | Case_aux c "contract_delfield_err"
+    | Case_aux c "contract_delfield_err_notobj"
+    | Case_aux c "contract_delfield_err_notstr"
 ].
 Tactic Notation "step_cases" tactic(first) ident(c) :=
   first;
@@ -1431,18 +1467,21 @@ Case "lc_obj".
     inversion H7. inversion H8. exists (E_obj x x0 H4 s x2). exists x3. 
     rewrite H2. apply cxt_obj...
 Case "lc_getfield". 
-  destruct (IHlc' (eq_refl 0)); right.
-    exists E_hole; exists (exp_getfield o f). constructor... 
-    inversion H. inversion H0. exists (E_getfield x f); exists x0. constructor...
-Case "lc_setfield".
   destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); right | right].
+    exists E_hole; exists (exp_getfield o f). constructor... 
+    inversion_clear H0. inversion_clear H1. exists (E_getfield2 H x); exists x0. constructor...
+    inversion_clear H. inversion_clear H0. exists (E_getfield1 x f); exists x0. constructor...
+Case "lc_setfield".
+  destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); [destruct (IHlc'1 (eq_refl 0)); right | right] | right].
     exists E_hole; exists (exp_setfield o f e). constructor...
-    inversion H0; inversion H1. exists (E_setfield2 H f x); exists x0. constructor...
-    inversion H; inversion H0. exists (E_setfield1 x f e); exists x0. constructor...
+    inversion_clear H1; inversion_clear H2. exists (E_setfield3 H H0 x); exists x0. constructor...
+    inversion_clear H0; inversion_clear H1. exists (E_setfield2 H x e); exists x0. constructor...
+    inversion_clear H; inversion_clear H0. exists (E_setfield1 x f e); exists x0. constructor...
 Case "lc_delfield".
-  destruct (IHlc' (eq_refl 0)); right.
+  destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); right | right].
     exists E_hole; exists (exp_delfield o f). constructor... 
-    inversion H. inversion H0. exists (E_delfield x f); exists x0. constructor...
+    inversion_clear H0. inversion_clear H1. exists (E_delfield2 H x); exists x0. constructor...
+    inversion_clear H. inversion_clear H0. exists (E_delfield1 x f); exists x0. constructor...
 Qed.
 
 (* NOTE: This doesn't work, but it's "right in principle".  
@@ -1534,24 +1573,28 @@ val_cases (inversion H1) SCase; subst; try solve [ exists (plug exp_err E); eaut
   exists (AtomEnv.add l (val_with_proof H2) sto0)...
 Case "redex_getfield".
   destruct (decide_tagof o TagObj).
-  inversion H2. destruct (dec_in (fieldnames l) f). 
-    exists (plug (lookup_assoc l f exp_err string_eq_dec) E); exists sto0. subst; eapply step_contract... 
+  inversion H3. destruct (decide_tagof f TagString). inversion H5. destruct (dec_in (fieldnames l) s). 
+    exists (plug (lookup_assoc l s exp_err string_eq_dec) E); exists sto0. subst; eapply step_contract... 
     destruct (dec_in (fieldnames l) __proto__).
-      exists (plug (exp_getfield (exp_deref (exp_getfield o __proto__)) f) E); exists sto0. subst; eapply step_contract...
+      exists (plug (exp_getfield (exp_deref (exp_getfield o (exp_string __proto__))) f) E); exists sto0. subst; eapply step_contract...
       exists (plug exp_undef E); exists sto0. subst; eapply step_contract...
+    exists (plug exp_err E); exists sto0. subst; eapply step_contract...
   exists (plug exp_err E); exists sto0; subst; eapply step_contract...
 Case "redex_setfield".
   destruct (decide_tagof o TagObj).
-  inversion H3. destruct (dec_in (fieldnames l) f).
-    exists (plug (exp_obj (update_assoc l f e0 string_eq_dec)) E); exists sto0. subst; eapply step_contract...
-    exists (plug (exp_obj ((f,e0)::l)) E); exists sto0. subst; eapply step_contract...
+  inversion H4. destruct (decide_tagof f TagString). inversion H6. 
+    destruct (dec_in (fieldnames l) s).
+      exists (plug (exp_obj (update_assoc l s e0 string_eq_dec)) E); exists sto0. subst; eapply step_contract...
+      exists (plug (exp_obj ((s,e0)::l)) E); exists sto0. subst; eapply step_contract...
+    exists (plug exp_err E); exists sto0. subst; eapply step_contract...
   exists (plug exp_err E); exists sto0; subst; eapply step_contract...
 Case "redex_delfield".
   destruct (decide_tagof o TagObj).
-  inversion H2. destruct (dec_in (fieldnames l) f). 
-    exists (plug (exp_obj (remove_fst f l string_eq_dec)) E); exists sto0.
-      subst; eapply step_contract... 
-    exists (plug o E); exists sto0. subst; eapply step_contract...
+  inversion H3. destruct (decide_tagof f TagString). inversion H5.
+    destruct (dec_in (fieldnames l) s). 
+      exists (plug (exp_obj (remove_fst s l string_eq_dec)) E); exists sto0. subst; eapply step_contract... 
+      exists (plug o E); exists sto0. subst; eapply step_contract...
+    exists (plug exp_err E); exists sto0; subst; eapply step_contract...
   exists (plug exp_err E); exists sto0; subst; eapply step_contract...
 Qed.
 
@@ -1652,18 +1695,18 @@ Case "contract_getfield".
   induction l. inversion H1.
   destruct a as (astr, aexp). simpl.
   destruct (string_eq_dec f astr). inversion H0. simpl in H3. inversion H3. apply lc_val...
-  apply IHl. inversion H. inversion H4. simpl in *. inversion H7. inversion H9. subst.
+  apply IHl. inversion H. inversion H5. simpl in *. inversion H8. inversion H10. subst.
   constructor...
   inversion H0. inversion H3. constructor... inversion H4...
   inversion H1. simpl in H2. symmetry in H2; contradiction. auto.
 Case "contract_setfield_update".
   induction l. inversion H2.
   destruct a as (astr, aexp). simpl.
-  destruct (string_eq_dec f astr). inversion H. subst. inversion H6. simpl in H7. inversion H7. subst.
+  destruct (string_eq_dec f astr). inversion H. subst. inversion H7. simpl in H6. inversion H6. subst.
   constructor... constructor...
   constructor... simpl. 
   unfold fieldnames in *; rewrite <- update_fieldnames_eq. inversion H0. simpl in H5...
-  constructor. inversion H; inversion H6; subst. simpl; simpl in H12; inversion H12...
+  constructor. inversion H. inversion H7; subst. simpl; simpl in H13; inversion H13...
   fold (map (@snd string exp) (update_assoc l f v string_eq_dec)); apply update_values_eq. inversion H0. inversion H4. rewrite Forall_forall in *; subst; intros. apply lc_val... apply lc_val...
 Case "contract_setfield_add".
   constructor. simpl. constructor... inversion H0... simpl. constructor... inversion H0...
@@ -1671,7 +1714,7 @@ Case "contract_setfield_add".
 Case "contract_delfield".
   unfold fieldnames in H1; rewrite map_fst_fst_split in H1; apply (in_split_fst f l) in H1. 
   inversion_clear H1; inversion_clear H2; inversion_clear H1. subst.  
-  inversion_clear H; inversion_clear H1; subst. unfold fieldnames in H; rewrite map_fst_fst_split in H.  
+  inversion_clear H; clear H2; inversion_clear H1; subst. unfold fieldnames in H; rewrite map_fst_fst_split in H.  
   rewrite fst_split_comm in H. assert (ND1 := NoDup_remove_1 (fst (split x)) (fst (split x0)) f H).
   assert (ND2 := NoDup_remove_2 (fst (split x)) (fst (split x0)) f H).
   assert (~ (In f (fst (split x)) \/ In f (fst (split x0)))).
