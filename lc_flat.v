@@ -58,6 +58,23 @@ Parameter __proto__ : string.
 
 Section ListLemmas.
 
+
+Fixpoint lookup_assoc A B (l : list (A * B)) k default (eq_dec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : B
+  := match l with
+       | [] => default
+       | (k',v)::tl => if (eq_dec k k') then v else lookup_assoc tl k default eq_dec
+     end.
+Fixpoint update_assoc A B (l : list (A * B)) k v (eq_dec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : list (A*B)
+  := match l with
+       | [] => []
+       | (k',o)::tl => if (eq_dec k k') then (k',v)::tl else (k',o)::(update_assoc tl k v eq_dec)
+     end.
+Fixpoint remove_fst A B (x : A) (l : list (A*B)) (eq_dec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}): list (A*B) :=
+    match l with
+      | [] => []
+      | (y,b)::tl => if (eq_dec x y) then remove_fst x tl eq_dec else (y,b)::(remove_fst x tl eq_dec)
+    end.
+
 Lemma in_dec_dec_list :
   (forall A (l1 : list A) l2, (forall a1 a2, In a1 l1 -> In a2 l2 -> a1 = a2 \/ a1 <> a2) -> (l1 = l2 \/ l1 <> l2)).
 Proof with eauto.
@@ -204,6 +221,74 @@ Qed.
 Lemma in_middle : forall A (l1 : list A) e l2, In e (l1 ++ e :: l2).
 intros.
 induction l1. simpl; left; auto. simpl. right; auto.
+Qed.
+
+Lemma remove_fst_in : forall A B (a : A) (b : B) (l : list (A*B)) eq_dec, ~ In (a,b) (remove_fst a l eq_dec).
+Proof with eauto.
+  induction l. simpl...
+  intros. destruct a0 as (xa, xb). simpl. destruct (eq_dec a xa). apply IHl.
+  simpl. intro. inversion H. inversion H0. symmetry in H2; contradiction. apply (IHl eq_dec H0).
+Qed.
+Lemma remove_fst_in_pair : forall A B a (l : list (A*B)) eq_dec, ~ In a (fst (split (remove_fst a l eq_dec))).
+Proof with eauto.
+  intros. induction l; simpl... intro. apply IHl. destruct a0 as (aa, ab). destruct (eq_dec a aa); simpl...
+  simpl in H. rewrite (split_components (remove_fst a l eq_dec)) in H. simpl in H.
+  inversion H. symmetry in H0; contradiction. auto.
+Qed.
+Lemma still_not_in : forall A B s (l:list(A*B)) eq_dec, ~ In s (map (@fst A B) l) -> ~ In s (map (@fst A B) (remove_fst s l eq_dec)).
+Proof with auto. induction l; simpl...
+  intros; intro. destruct a as (aa, ab). simpl in *.
+  assert (aa <> s /\ ~ In s (map (@fst A B) l)). split. intro; apply H; left... intro; apply H; right...
+  clear H. inversion_clear H1. destruct (eq_dec s aa). symmetry in e; contradiction. 
+  inversion H0. simpl in H1; contradiction. unfold not in IHl. apply IHl with eq_dec. intro. contradiction. auto.
+Qed.
+Theorem in_split_fst : forall A B a (l:list (A*B)), In a (fst (split l)) -> exists l1, exists l2, exists b, l = l1++(a,b)::l2.
+Proof.
+  induction l; intros; simpl... inversion H. destruct a0 as (xa, xb). rewrite fst_split_cons in H.
+  inversion H. exists []; exists l; exists xb... subst; simpl; reflexivity.
+  clear H. assert (H := IHl H0). inversion_clear H. inversion_clear H1. inversion_clear H. 
+  exists ((xa,xb)::x); exists x0; exists x1. subst; simpl. reflexivity.
+Qed.
+
+  Lemma remove_app_comm : forall A B l1 (f:A) (x:B) l2 eq_dec, 
+    remove_fst f (l1 ++ (f, x) :: l2) eq_dec = remove_fst f l1 eq_dec ++ remove_fst f [(f,x)] eq_dec ++ remove_fst f l2 eq_dec.
+    Proof with auto. induction l1. simpl... intros. destruct (eq_dec f f)... intros.
+      destruct a as (aa, ab). remember ((f, x) :: l2) as temp. simpl.
+      destruct (eq_dec f aa). rewrite Heqtemp; apply IHl1. rewrite <- app_comm_cons.
+      f_equal. subst. apply IHl1. 
+    Qed.
+Lemma fst_split_comm2 : forall A B (l1 : list(A*B)) l2, 
+  fst (split (l1 ++ l2)) = fst (split l1) ++ fst (split l2).
+Proof with eauto.
+  induction l1; intros. simpl...
+  simpl.
+  destruct a as (a0, b0). rewrite (split_components l1); rewrite (split_components l2); 
+  rewrite (split_components (l1 ++ l2)); simpl. f_equal...
+Qed.
+Lemma not_in_remove_eq : forall A B f (l: list (A*B)) eq_dec, ~ In f (fst (split l)) -> l = remove_fst f l eq_dec.
+Proof with eauto.
+  induction l. intros. simpl...
+  intros. destruct a as (s, e). simpl in H. rewrite (split_components l) in H; simpl in H.
+  assert (s <> f). intro; apply H; left... assert (~ In f (fst (split l))). intro; apply H; right...
+  clear H. assert (H := IHl eq_dec H1). simpl. destruct (eq_dec f s). symmetry in e0; contradiction.
+  f_equal...
+Qed.
+Lemma snd_split_comm2 : forall A B (l1 : list(A*B)) l2, 
+  snd (split (l1 ++ l2)) = snd (split l1) ++ snd (split l2).
+Proof with eauto.
+  induction l1; intros. simpl...
+  simpl.
+  destruct a as (a0, b0). rewrite (split_components l1); rewrite (split_components l2); 
+  rewrite (split_components (l1 ++ l2)); simpl. f_equal...
+Qed.
+Lemma update_fieldnames_eq : forall A B (l:list(A*B)) f v eq_dec, map (@fst A B) l = map (@fst A B) (update_assoc l f v eq_dec).
+Proof. induction l; intros; auto...
+  destruct a as (s,e). simpl. destruct (eq_dec f s); f_equal; simpl. auto. f_equal; apply IHl.
+Qed.
+Lemma update_values_eq : forall A B l f v P eq_dec, Forall P (map (@snd A B) l) -> P v -> Forall P (map (@snd A B) (update_assoc l f v eq_dec)).
+Proof with auto. induction l; intros; simpl; auto. intros.
+  destruct a as (s, e). destruct (eq_dec f s). simpl. constructor... inversion H...
+  constructor. inversion H... simpl in H. apply IHl. inversion H... auto.
 Qed.
 
 End ListLemmas.
@@ -889,17 +974,6 @@ Fixpoint delta exp := match exp with
   | _                    => exp_err
 end.
 
-Fixpoint lookup_assoc A B (l : list (A * B)) k default (eq_dec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : B
-  := match l with
-       | [] => default
-       | (k',v)::tl => if (eq_dec k k') then v else lookup_assoc tl k default eq_dec
-     end.
-Fixpoint update_assoc A B (l : list (A * B)) k v (eq_dec : forall (a1 a2 : A), {a1 = a2} + {a1 <> a2}) : list (A*B)
-  := match l with
-       | [] => []
-       | (k',o)::tl => if (eq_dec k k') then (k',v)::tl else (k',o)::(update_assoc tl k v eq_dec)
-     end.
-
 Inductive contract :  exp -> exp -> Prop := 
   | contract_succ : forall e, contract (exp_succ e) (delta (exp_succ e))
   | contract_not  : forall e, contract (exp_not e) (delta (exp_not e))
@@ -990,7 +1064,7 @@ Inductive contract :  exp -> exp -> Prop :=
       val (exp_obj l) ->
       In f (fieldnames l) ->
       contract (exp_delfield (exp_obj l) f) 
-        (exp_obj (filter (fun kv => if string_eq_dec (fst kv) f then false else true) l))
+        (exp_obj (remove_fst f l string_eq_dec))
   | contract_delfield_notfound : forall l f,
       val (exp_obj l) ->
       ~ In f (fieldnames l) ->
@@ -1475,7 +1549,7 @@ Case "redex_setfield".
 Case "redex_delfield".
   destruct (decide_tagof o TagObj).
   inversion H2. destruct (dec_in (fieldnames l) f). 
-    exists (plug (exp_obj (filter (fun kv => if string_eq_dec (fst kv) f then false else true) l)) E); exists sto0.
+    exists (plug (exp_obj (remove_fst f l string_eq_dec)) E); exists sto0.
       subst; eapply step_contract... 
     exists (plug o E); exists sto0. subst; eapply step_contract...
   exists (plug exp_err E); exists sto0; subst; eapply step_contract...
@@ -1548,6 +1622,8 @@ Case "exp_obj".
     destruct x as (s, e). subst. unfold values. rewrite map_snd_snd_split. apply in_split_r...
 Qed.
 
+
+
 Lemma lc_contract : forall ae e,
   lc ae ->
   contract ae e ->
@@ -1586,27 +1662,38 @@ Case "contract_setfield_update".
   destruct (string_eq_dec f astr). inversion H. subst. inversion H6. simpl in H7. inversion H7. subst.
   constructor... constructor...
   constructor... simpl. 
-  Lemma helper1 : forall l f v, fieldnames l = fieldnames (update_assoc l f v string_eq_dec).
-  Proof. induction l; intros; auto...
-    destruct a as (s,e). simpl. destruct (string_eq_dec f s); f_equal; simpl. auto. f_equal; apply IHl.
-  Qed.
-  rewrite <- helper1. inversion H0. simpl in H5...
-  Lemma helper2 : forall l f v P, Forall P (values l) -> P v -> Forall P (values (update_assoc l f v string_eq_dec)).
-  Proof with auto. induction l; intros; simpl; auto. intros.
-    destruct a as (s, e). destruct (string_eq_dec f s). simpl. constructor... inversion H...
-    constructor. inversion H... simpl in H. apply IHl. inversion H... auto.
-  Qed.
+  unfold fieldnames in *; rewrite <- update_fieldnames_eq. inversion H0. simpl in H5...
   constructor. inversion H; inversion H6; subst. simpl; simpl in H12; inversion H12...
-  apply helper2. inversion H0. inversion H4. rewrite Forall_forall in *; subst; intros. apply lc_val... apply lc_val...
+  fold (map (@snd string exp) (update_assoc l f v string_eq_dec)); apply update_values_eq. inversion H0. inversion H4. rewrite Forall_forall in *; subst; intros. apply lc_val... apply lc_val...
 Case "contract_setfield_add".
   constructor. simpl. constructor... inversion H0... simpl. constructor... inversion H0...
   rewrite Forall_forall in H4; apply Forall_forall; intros; apply lc_val...
 Case "contract_delfield".
-  induction l. simpl... simpl. destruct a as (s, e). simpl. destruct (string_eq_dec s f).(*  apply IHl. *)
-    (* inversion H... inversion H4. simpl in *. inversion H7; inversion H9; subst... *)
-    (* inversion H0... simpl in *; inversion H3; inversion H4; subst... *)
-    (* simpl in *. *)
-admit. admit.    
+  unfold fieldnames in H1; rewrite map_fst_fst_split in H1; apply (in_split_fst f l) in H1. 
+  inversion_clear H1; inversion_clear H2; inversion_clear H1. subst.  
+  inversion_clear H; inversion_clear H1; subst. unfold fieldnames in H; rewrite map_fst_fst_split in H.  
+  rewrite fst_split_comm in H. assert (ND1 := NoDup_remove_1 (fst (split x)) (fst (split x0)) f H).
+  assert (ND2 := NoDup_remove_2 (fst (split x)) (fst (split x0)) f H).
+  assert (~ (In f (fst (split x)) \/ In f (fst (split x0)))).
+  intro. apply (in_or_app (fst (split x)) (fst (split x0)) f) in H1. contradiction. 
+  assert (~ In f (fst (split x))). intro; apply H1; left...
+  assert (~ In f (fst (split x0))). intro; apply H1; right... clear ND2. clear H1.
+  constructor. 
+  rewrite remove_app_comm. unfold fieldnames. rewrite map_fst_fst_split. 
+  rewrite fst_split_comm2. rewrite fst_split_comm2. simpl. destruct (string_eq_dec f f). simpl.
+  rewrite (not_in_remove_eq f x string_eq_dec H3) in ND1. 
+  rewrite (not_in_remove_eq f x0 string_eq_dec H4) in ND1...
+  rewrite (not_in_remove_eq f x string_eq_dec H3) in H.
+  rewrite (not_in_remove_eq f x0 string_eq_dec H4) in H...
+  rewrite Forall_forall in H2. rewrite Forall_forall; intros. rewrite remove_app_comm in H1.
+  unfold values in H1. rewrite map_snd_snd_split in H1.
+  rewrite snd_split_comm2 in H1; rewrite snd_split_comm2 in H1.
+  apply in_app_or in H1. inversion_clear H1. apply H2. unfold values. rewrite map_snd_snd_split.
+  rewrite snd_split_comm. apply in_or_app. left. rewrite (not_in_remove_eq f x string_eq_dec H3)...
+  apply in_app_or in H5. inversion_clear H5. simpl in H1. destruct (string_eq_dec f f). inversion H1. 
+  unfold not in n. assert False. apply n... contradiction.
+  apply H2. unfold values. rewrite map_snd_snd_split. rewrite snd_split_comm. apply in_or_app. right.
+  right. rewrite (not_in_remove_eq f x0 string_eq_dec H4)...
 Qed.
 
 Lemma preservation : forall sto1 e1 sto2 e2,
