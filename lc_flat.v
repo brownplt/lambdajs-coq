@@ -125,7 +125,7 @@ Qed.
 
 Lemma take_while A (l : list A)
   (P : A -> Prop) (dec : forall x, In x l -> decidable (P x)) : 
-  (Forall P l) \/ (exists (l1 l2 : list A) (x : A), l = l1 ++ x :: l2 /\ Forall P l1 /\ ~ P x).
+  (Forall P l) \/ (exists l1 : list A, exists l2 : list A, exists x : A, l = l1 ++ x :: l2 /\ Forall P l1 /\ ~ P x).
 Proof with eauto.
   induction l. left; constructor...
   assert (D := forall_dec_dec_forall P (l:=l)).
@@ -133,7 +133,7 @@ Proof with eauto.
   right...
   assert (P a \/ ~ P a). apply dec. left...
   inversion H. inversion H0. left. constructor... right. exists []; exists l; exists a. auto.
-  assert (Forall P l \/ exists l1 l2 x, l = l1 ++ x :: l2 /\ Forall P l1 /\ ~ P x). apply IHl. intros. apply dec.
+  assert (Forall P l \/ exists l1, exists l2, exists x, l = l1 ++ x :: l2 /\ Forall P l1 /\ ~ P x). apply IHl. intros. apply dec.
   right...
   inversion H2. contradiction. clear H2. 
   inversion H0. inversion H3. inversion H4. inversion H5. right. exists (a :: x). exists x0. exists x1. inversion H6. split. rewrite H7... inversion H8. split... 
@@ -605,7 +605,7 @@ fix lc'_ind' (n : nat) (e : exp) (l : lc' n e) {struct l} : P n e :=
   | lc_delfield n0 o f lc_o lc_f => rec_lc_delfield n0 o (lc'_ind' n0 o lc_o) f (lc'_ind' n0 f lc_f)
   end.
 
-Definition lc e := lc' 0 e.
+Definition lc := lc' 0.
 
 Unset Elimination Schemes.
 Inductive val : exp -> Prop :=
@@ -919,7 +919,7 @@ Inductive decompose : exp -> E -> exp -> Prop :=
 .
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
-  | cxt1_hole : forall e,
+  | cxt1_decompose1 : forall e,
       decompose1 e E_hole e
   | cxt1_app_1 : forall e1 e2,
       decompose1 (exp_app e1 e2) (E_app_1 E_hole e2) e1
@@ -1399,8 +1399,9 @@ Lemma decompose_lc : forall E e ae,
   lc ae.
 Proof. intros. decompose_cases (induction H0) Case; try solve [inversion H; eauto | auto].
 Case "decompose_obj".
-  apply IHdecompose. apply Forall_in with (values (vs ++ (k, e) :: es)). simpl.
-  unfold lc in H. inversion H. auto.
+  apply IHdecompose. 
+ apply Forall_in with (l := values (vs ++ (k, e) :: es)).
+  unfold lc in H. inversion H.  auto.
   unfold values; rewrite map_app; simpl; apply in_middle.
 Qed.
 
@@ -1410,7 +1411,7 @@ Lemma decompose1_lc : forall E e ae,
   lc ae.
 Proof. intros. decompose1_cases (induction H0) Case; try solve [inversion H; eauto | auto]. 
 Case "decompose1_obj".
-  apply Forall_in with (values (vs ++ (k, e) :: es)). inversion H. auto.
+  apply Forall_in with (l := values (vs ++ (k, e) :: es)). inversion H. auto.
   unfold values. rewrite map_app. simpl.
   apply in_middle.
 Qed.
@@ -1459,8 +1460,8 @@ Case "lc_obj".
     inversion H2; clear H2. inversion H3; clear H3. inversion H4; clear H4.
     remember x1 as x1'; destruct x1'.
     assert (Forall val (values x)). unfold values; rewrite map_snd_snd_split; apply forall_snd_comm...
-    assert (val e \/ (exists E ae, decompose e E ae)).   
-      assert (Forall (fun e => val e \/ exists E ae, decompose e E ae) (map (snd (B:=exp)) l)). 
+    assert (val e \/ (exists E, exists ae, decompose e E ae)).   
+      assert (Forall (fun e => val e \/ exists E, exists ae, decompose e E ae) (map (snd (B:=exp)) l)). 
       induction H0; constructor. apply H0... auto. clear H0.
       rewrite Forall_forall in H6. apply H6.  rewrite map_snd_snd_split. rewrite H2.
       rewrite snd_split_comm. simpl. apply in_middle. 
@@ -1647,7 +1648,7 @@ Case "exp_bvar".
   assert (H1 := Coq.Arith.Compare_dec.lt_eq_lt_dec k n).
   destruct H1. destruct s.
   SCase "k < n".
-    inversion H. omega.
+    inversion H. subst. assert (beq_nat k n = false). rewrite -> beq_nat_false_iff. omega. rewrite -> H1. apply lc_ascend with (k := S k). omega. exact H.
   SCase "k = n". 
     rewrite <- beq_nat_true_iff in e.
     rewrite -> e.  apply lc_ascend with (k := 0) (k' := k)... omega.
