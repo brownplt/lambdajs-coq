@@ -294,7 +294,7 @@ Qed.
 End ListLemmas.
 
 Section Definitions.
-
+Unset Elimination Schemes.
 Inductive exp : Set :=
   | exp_fvar  : atom -> exp
   | exp_bvar  : nat -> exp (* bound variables as de Brujin indices *)
@@ -323,7 +323,7 @@ Inductive exp : Set :=
   | exp_getfield : exp -> exp -> exp
   | exp_setfield : exp -> exp -> exp -> exp
   | exp_delfield : exp -> exp -> exp.
-Reset exp_ind.
+Set Elimination Schemes.
 
 Definition exp_ind := fun (P : exp -> Prop)
   (rec_exp_fvar : forall a : atom, P (exp_fvar a))
@@ -485,6 +485,7 @@ end.
 
 Definition open e u := open_rec 0 u e.
 
+Unset Elimination Schemes.
 (* locally closed : all de Brujin indices are bound *)
 Inductive lc' : nat -> exp -> Prop :=
   | lc_fvar : forall n a, lc' n (exp_fvar a)
@@ -521,8 +522,7 @@ Inductive lc' : nat -> exp -> Prop :=
   | lc_setfield : forall n o f e, lc' n o -> lc' n f -> lc' n e -> lc' n (exp_setfield o f e)
   | lc_delfield : forall n o f, lc' n o -> lc' n f -> lc' n (exp_delfield o f)
 .
-
-Reset lc'_ind.
+Set Elimination Schemes.
 
 Definition lc'_ind := fun (P : nat -> exp -> Prop)
   (rec_lc_fvar : forall (n : nat) (a : atom), P n (exp_fvar a))
@@ -607,6 +607,7 @@ fix lc'_ind' (n : nat) (e : exp) (l : lc' n e) {struct l} : P n e :=
 
 Definition lc e := lc' 0 e.
 
+Unset Elimination Schemes.
 Inductive val : exp -> Prop :=
   | val_abs  : forall e, lc (exp_abs e) -> val (exp_abs e)
   | val_nat  : forall n, val (exp_nat n)
@@ -619,7 +620,7 @@ Inductive val : exp -> Prop :=
   | val_obj  : forall l, Forall val (values l)
                      -> NoDup (fieldnames l)
                      -> val (exp_obj l).
-Reset val_ind.
+Set Elimination Schemes.
 
 Definition val_ind := fun (P : exp -> Prop)
   (rec_val_abs : forall e : exp, lc (exp_abs e) -> P (exp_abs e))
