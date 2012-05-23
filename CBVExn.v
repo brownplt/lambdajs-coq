@@ -28,7 +28,9 @@ Inductive exp : Set :=
   | exp_abs  : exp -> exp
   | exp_app  : exp -> exp -> exp
   | exp_err  : exp -> exp
-  | exp_catch : exp -> exp -> exp.
+  | exp_catch : exp -> exp -> exp
+  | exp_label : atom -> exp -> exp
+  | exp_break : atom -> exp -> exp.
 
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_bvar n    => if beq_nat k n then u else e
@@ -36,6 +38,8 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) { struct e } := match e with
   | exp_app e1 e2 => exp_app (open_rec k u e1) (open_rec k u e2)
   | exp_err e     => exp_err (open_rec k u e)
   | exp_catch e1 e2 => exp_catch (open_rec k u e1) (open_rec (S k) u e2)
+  | exp_label x e  => exp_label x (open_rec k u e)
+  | exp_break x e => exp_break x (open_rec k u e)
 end.
 
 Definition open := open_rec 0.
@@ -49,7 +53,13 @@ Inductive lc' : nat -> exp -> Prop :=
   | lc_catch : forall n e1 e2,
       lc' n e1 ->
       lc' (S n) e2 ->
-      lc' n (exp_catch e1 e2).
+      lc' n (exp_catch e1 e2)
+  | lc_label : forall n x e,
+      lc' n e ->
+      lc' n (exp_label x e)
+  | lc_break : forall n x e,
+      lc' n e ->
+      lc' n (exp_break x e).
 
 Definition lc := lc' 0.
 
@@ -58,14 +68,17 @@ Inductive val : exp -> Prop :=
 
 Inductive val' : exp -> Prop :=
   | val'_val : forall v, val v -> val' v
-  | val'_err : forall v, val v -> val' (exp_err v).
+  | val'_err : forall v, val v -> val' (exp_err v)
+  | val'_break : forall x v, val v -> val' (exp_break x v).
 
 Inductive E : Set :=
   | E_hole  : E
   | E_app_1 : E -> exp -> E
   | E_app_2 : exp -> E -> E
   | E_err   : E -> E
-  | E_catch : E -> exp -> E.
+  | E_catch : E -> exp -> E
+  | E_label : atom -> E -> E
+  | E_break : atom -> E -> E.
 
 Inductive F : exp -> exp -> Prop :=
   | F_app_1 : forall e1 e2,
@@ -77,7 +90,32 @@ Inductive F : exp -> exp -> Prop :=
       F (exp_app v1 e2) e2
   | F_err : forall e,
       lc e ->
-      F (exp_err e) e.
+      F (exp_err e) e
+  | F_label : forall x e,
+      lc e ->
+      F (exp_label x e) e
+  | F_break : forall x e,
+      lc e ->
+      F (exp_break x e) e.
+
+Inductive G : exp -> exp -> Prop :=
+  | G_app_1 : forall e1 e2,
+      lc e1 ->
+      lc e2 ->
+      G (exp_app e1 e2) e1
+  | G_app_2 : forall v1 e2,
+      val v1 ->
+      G (exp_app v1 e2) e2
+  | G_err : forall e,
+      lc e ->
+      G (exp_err e) e
+  | G_break : forall x e,
+      lc e ->
+      G (exp_break x e) e
+  | G_catch : forall e1 e2,
+      lc e1 ->
+      lc' 1 e2 ->
+      G (exp_catch e1 e2) e1.
 
 Inductive red :  exp -> exp -> Prop := 
   | red_app  : forall e v, 
@@ -90,7 +128,20 @@ Inductive red :  exp -> exp -> Prop :=
       red (exp_catch v e) v
   | red_catch : forall v e,
       val v ->
-      red (exp_catch (exp_err v) e) (open v e).
+      red (exp_catch (exp_err v) e) (open v e)
+  | red_unlabel : forall x v,
+      red (exp_label x v) v
+  | red_label_match : forall x v,
+      val v ->
+      red (exp_label x (exp_break x v)) v
+  | red_rebreak : forall x y v,
+      val v ->
+      x <> y ->
+      red (exp_label x (exp_break y v)) (exp_break y v)
+  | red_break_bubble : forall x e v,
+      val v ->
+      G e (exp_break x v) ->
+      red e (exp_break x v).
 
 Inductive ae : exp -> Prop :=
   | ae_app   : forall e1 e2, val e1 -> val e2 -> ae (exp_app e1 e2)
@@ -105,7 +156,17 @@ Inductive ae : exp -> Prop :=
   | ae_catch : forall v e,
       val v ->
       lc' 1 e ->
-      ae (exp_catch (exp_err v) e).
+      ae (exp_catch (exp_err v) e)
+  | ae_unlabel : forall x v,
+      val v -> 
+      ae (exp_label x v)
+  | ae_label_match_and_mismatch : forall x y v,
+      val v ->
+      ae (exp_label x (exp_break y v))
+  | ae_break : forall e x v,
+      val v ->
+      G e (exp_break x v) ->
+      ae e.
 
 Inductive cxt : exp -> E -> exp -> Prop :=
   | cxt_hole : forall e,
@@ -123,7 +184,13 @@ Inductive cxt : exp -> E -> exp -> Prop :=
       cxt (exp_err e) (E_err E) ae
   | cxt_catch : forall e1 e2 E ae,
       cxt e1 E ae ->
-      cxt (exp_catch e1 e2) (E_catch E e2) ae.
+      cxt (exp_catch e1 e2) (E_catch E e2) ae
+  | cxt_label : forall E ae x e,
+      cxt e E ae ->
+      cxt (exp_label x e) (E_label x E) ae
+  | cxt_break : forall E ae x e,
+      cxt e E ae ->
+      cxt (exp_break x e) (E_break x E) ae.
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole           => e
@@ -131,6 +198,8 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_app_2 v cxt    => exp_app v (plug e cxt)
   | E_err cxt        => exp_err (plug e cxt)
   | E_catch cxt e2   => exp_catch (plug e cxt) e2
+  | E_label x cxt    => exp_label x (plug e cxt)
+  | E_break x cxt    => exp_break x (plug e cxt)
 end.
 
 Inductive step : exp -> exp -> Prop :=
@@ -142,9 +211,9 @@ Inductive step : exp -> exp -> Prop :=
 
 End Definitions.
 
-Hint Constructors cxt ae E val exp val lc' red step val' F.
+Hint Constructors cxt ae E val exp val lc' red step val' F G.
 Hint Unfold open lc.
-
+ 
 Lemma plug_ok : forall e E e',
   cxt e E e' -> plug e' E = e.
 Proof.
@@ -164,20 +233,6 @@ Ltac destruct_decomp e := match goal with
   | _ => fail
 end.
 
-(*
-  e : exp
-  H : lc' 0 e
-  H0 : val' e
-  ============================
-   val' (exp_err e) \/
-   (exists E0 : E, exists e' : exp, cxt (exp_err e) E0 e')
-
-  inversion H0; subst...
-  right...
-  destruct H0 as [E [e' cxt]]...
-
-*)
-
 Ltac solve_decomp' := match goal with
   | [ Hval : val' ?e1
       |- val' ?e2 \/ (exists E' : E, exists e' : exp, cxt ?e2 E' e') ]
@@ -192,16 +247,7 @@ Ltac solve_decomp' := match goal with
        let cxt := fresh "cxt" in
        destruct IH as [E0 [e0 cxt]]; eauto 6
 end.
-(*
-Ltac solve_decomp' := match goal with
-  | [ H1 : lc' 0 ?e,
-      IHe : val ?e \/ 
-            (exists E' : E, exists ae : exp, cxt ?e E' ae)
-      |- val ?exp \/ (exists E0 : E, exists ae : exp, cxt ?exp E0 ae) ]
-    => (destruct IHe; right; eauto; destruct_decomp e; eauto)
-  | [ |- _] => fail "solve_decomp'"
-end.
-*)
+
 Ltac solve_decomp := match goal with
   | [ IH : 0 = 0 -> _ |- _ ]
     => let H := fresh "H" in
@@ -222,19 +268,11 @@ inversion H.
 (* abs *)
 left...
 (* app *)
-destruct IHlc'1; try reflexivity. destruct IHlc'2; try reflexivity.
-  inversion H1; subst. 
-  inversion H3; subst.
-  inversion H2; subst.
-  right...
-  right...
-  right...
-  inversion H1; subst.
-  destruct H2 as [E [e' cxt]].
-  right...
-  right...
-  destruct H1 as [E [e' cxt]].
-  right...
+destruct IHlc'1; try reflexivity; destruct IHlc'2; try reflexivity;
+  inversion H1; subst; try (right; eauto 6);
+  inversion H3; subst;
+  inversion H2; subst; try (eauto 6).
+  solve_decomp'.
 Qed.
 
 Hint Resolve cxt_lc.
@@ -298,8 +336,9 @@ Lemma lc_active : forall e,
   ae e -> lc e.
 Proof with auto using lc_val.
   intros. 
-    inversion H...
-    inversion H1...
+  inversion H...
+  inversion H1...
+  inversion H1...
 Qed.
 
 Hint Resolve lc_active lc_val.
@@ -355,6 +394,8 @@ inversion H0; subst...
 inversion H...
 (* catch *)
 inversion H...
+(* label *)
+inversion H...
 Qed.
 
 Hint Resolve lc_red.
@@ -367,8 +408,6 @@ Proof with auto.
 intros.
 unfold lc in *.
 destruct H0...
-(*    : forall (E : E) (ae e e' : exp),
-       lc e -> lc e' -> cxt e E ae -> lc (plug e' E) *)
 apply lc_plug with (e' := e') (E := E0) (ae := ae0) (e := e)...
 apply lc_red with (ae := ae0)...
 apply cxt_lc with (E := E0) (e := e)...
