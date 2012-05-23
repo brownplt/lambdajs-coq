@@ -207,7 +207,10 @@ Inductive step : exp -> exp -> Prop :=
       lc e ->
       cxt e E ae ->
       red ae e' ->
-      step e (plug e' E).
+      step e (plug e' E)
+  | step_break : forall x v,
+      val v ->
+      step (exp_break x v) (exp_err v).
 
 End Definitions.
 
