@@ -164,6 +164,35 @@ Ltac destruct_decomp e := match goal with
   | _ => fail
 end.
 
+(*
+  e : exp
+  H : lc' 0 e
+  H0 : val' e
+  ============================
+   val' (exp_err e) \/
+   (exists E0 : E, exists e' : exp, cxt (exp_err e) E0 e')
+
+  inversion H0; subst...
+  right...
+  destruct H0 as [E [e' cxt]]...
+
+*)
+
+Ltac solve_decomp' := match goal with
+  | [ Hval : val' ?e1
+      |- val' ?e2 \/ (exists E' : E, exists e' : exp, cxt ?e2 E' e') ]
+    => let E0 := fresh "E" in
+       let e0 := fresh "e" in
+       let cxt := fresh "cxt" in
+       (inversion Hval; subst; eauto 6; right; eauto 6; destruct Hval as [E0 [e0 cxt]]; eauto 6)
+  | [ IH: exists E' : E, exists ae : exp, cxt ?e E' ae
+      |- _ ]
+    => let E0 := fresh "E" in
+       let e0 := fresh "e" in
+       let cxt := fresh "cxt" in
+       destruct IH as [E0 [e0 cxt]]; eauto 6
+end.
+(*
 Ltac solve_decomp' := match goal with
   | [ H1 : lc' 0 ?e,
       IHe : val ?e \/ 
@@ -172,10 +201,11 @@ Ltac solve_decomp' := match goal with
     => (destruct IHe; right; eauto; destruct_decomp e; eauto)
   | [ |- _] => fail "solve_decomp'"
 end.
-
+*)
 Ltac solve_decomp := match goal with
   | [ IH : 0 = 0 -> _ |- _ ]
-    => (remember (IH (eq_refl 0)); solve_decomp')
+    => let H := fresh "H" in
+       (remember (IH (eq_refl 0)) as H; destruct H;  solve_decomp')
   | [ |- _ ] => fail "flasd"
 end.
 
@@ -186,7 +216,7 @@ Proof with eauto 6.
 intros.
 unfold lc in H.
 remember 0.
-induction H; intros; subst.
+induction H; intros; subst; try solve_decomp.
 (* bvar *)
 inversion H.
 (* abs *)
@@ -205,17 +235,6 @@ destruct IHlc'1; try reflexivity. destruct IHlc'2; try reflexivity.
   right...
   destruct H1 as [E [e' cxt]].
   right...
-(* err *)
-destruct IHlc'.
-  reflexivity.
-  inversion H0; subst...
-  right...
-  destruct H0 as [E [e' cxt]]...
-(* catch *)
-destruct IHlc'1.
-  reflexivity.
-  inversion H1; subst...
-  destruct H1 as [E [e' cxt]]...
 Qed.
 
 Hint Resolve cxt_lc.
@@ -326,23 +345,16 @@ Lemma lc_red : forall ae e,
   lc ae ->
   red ae e ->
   lc e.
-Proof with auto.
+Proof with (unfold lc in *; unfold open in *; auto).
 intros.
 destruct H0...
 (* app *)
-inversion H; subst.
-unfold lc in *.
-inversion H; subst.
-unfold open.
-inversion H4; subst...
+inversion H... inversion H4...
 (* err *)
 inversion H0; subst...
 inversion H...
 (* catch *)
-unfold lc in *.
-inversion H; subst.
-unfold open.
-inversion H4...
+inversion H...
 Qed.
 
 Hint Resolve lc_red.
