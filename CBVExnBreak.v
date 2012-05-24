@@ -252,10 +252,27 @@ Ltac solve_decomp' := match goal with
 end.
 
 Ltac solve_decomp := match goal with
-  | [ IH : 0 = 0 -> _ |- _ ]
-    => let H := fresh "H" in
-       (remember (IH (eq_refl 0)) as H; destruct H;  solve_decomp')
+  | [ IH : val' ?e2 \/ (exists E' : E, exists e' : exp, cxt ?e2 E' e') |- _]
+    => (destruct IH;  solve_decomp')
   | [ |- _ ] => fail "flasd"
+end.
+
+Ltac clean_decomp := repeat match goal with
+  | [ IH : 0 = 0 -> ?exp |- _ ]
+    => let H := fresh IH in
+       (assert exp as H by (apply IH; reflexivity); clear IH)
+  | [ IH : 1 = 0 -> _ |- _ ]
+    => clear IH
+end.
+
+Ltac invert_val' := repeat match goal with
+  | [ IH : val' ?e |- _ ]
+    => (inversion IH; clear IH)
+end.
+
+Ltac invert_val := repeat match goal with
+  | [ IH : val ?e |- _ ]
+    => (inversion IH; clear IH)
 end.
 
 Lemma decomp : forall e,
@@ -264,17 +281,17 @@ Lemma decomp : forall e,
 Proof with eauto 6.
 intros.
 unfold lc in H.
-remember 0.
-induction H; intros; subst; try solve_decomp.
+remember 0. 
+induction H; intros; subst; clean_decomp; try solve_decomp.
 (* bvar *)
 inversion H.
 (* abs *)
 left...
 (* app *)
-destruct IHlc'1; try reflexivity; destruct IHlc'2; try reflexivity;
-  inversion H1; subst; try (right; eauto 6);
-  inversion H3; subst;
-  inversion H2; subst; try (eauto 6).
+destruct IHlc'0; destruct IHlc'2.
+  invert_val'; subst; right...
+  solve_decomp'.
+  invert_val'; subst; right; solve_decomp'.
   solve_decomp'.
 Qed.
 
