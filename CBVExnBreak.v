@@ -375,27 +375,24 @@ Lemma lc_open : forall k e u,
   lc' (S k) e ->
   lc' 0 u ->
   lc' k (open_rec k u e).
-Proof with auto.
+Proof with try solve [ auto with arith | omega ].
 intros.
 generalize dependent k.
 induction e; intros; try (simpl; inversion H; subst; eauto).
-assert (k >= n \/ k < n). apply le_or_lt.
-destruct H1.
-assert ({ k = n } + { k <> n }). decide equality.
-destruct H2.
-assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
-rewrite -> H2.  assert (k >= 0). omega.
-  apply lc_ascend with (k := 0) (k' := k)...
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
+assert (k >= n \/ k < n) as Hkn...
+destruct Hkn.
+  assert ({ k = n } + { k <> n }) as Hkn'...
+  destruct Hkn'.
+    assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
+    rewrite -> H2. 
+    apply lc_ascend with (k := 0) (k' := k)...
+    assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
+    rewrite -> H2.
+    assert (n < k)...
+assert (beq_nat k n = false). rewrite -> beq_nat_false_iff...
 rewrite -> H2.
-assert (n < k). omega. auto...
-(* k < n *)
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
-rewrite -> H2. apply lc_bvar.
-clear H2.
-inversion H; subst.
-assert False. omega.
-inversion H2.
+apply lc_bvar.
+inversion H...
 Qed.
 
 Hint Resolve lc_ascend lc_open.
@@ -404,18 +401,13 @@ Lemma lc_red : forall ae e,
   lc ae ->
   red ae e ->
   lc e.
-Proof with (unfold lc in *; unfold open in *; auto).
+Proof with (unfold lc in *; unfold open in *; try solve [ auto | inversion H; auto ]).
 intros.
 destruct H0...
 (* app *)
 inversion H... inversion H4...
 (* err *)
 inversion H0; subst...
-inversion H...
-(* catch *)
-inversion H...
-(* label *)
-inversion H...
 Qed.
 
 Hint Resolve lc_red.
