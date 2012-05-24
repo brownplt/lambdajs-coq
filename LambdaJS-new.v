@@ -561,7 +561,7 @@ Qed.
 Inductive E : Set :=
   | E_hole    : E
   | E_app_1   : E -> exp -> E
-  | E_app_2   : forall (v : exp), val v -> E -> E
+  | E_app_2   : exp -> E -> E
   | E_succ    : E -> E
   | E_not     : E -> E
   | E_if      : E -> exp -> exp -> E
@@ -570,7 +570,7 @@ Inductive E : Set :=
   | E_ref     : E -> E
   | E_deref   : E -> E
   | E_setref1 : E -> exp -> E
-  | E_setref2 : forall (v : exp), val v -> E -> E
+  | E_setref2 : exp -> E -> E
   | E_catch   : E -> exp -> E
   | E_throw   : E -> E
   | E_seq   : E -> exp -> E
@@ -578,12 +578,12 @@ Inductive E : Set :=
   | E_obj     : forall (vs : list (string * exp)) (es : list (string * exp)), 
                   (Forall val (values vs)) -> string -> E -> E
   | E_getfield1 : E -> exp -> E
-  | E_getfield2 : forall (v : exp), val v -> E -> E
+  | E_getfield2 : exp -> E -> E
   | E_setfield1 : E -> exp -> exp -> E
-  | E_setfield2 : forall (v : exp), val v -> E -> exp -> E
-  | E_setfield3 : forall (v f : exp), val v -> val f -> E -> E
+  | E_setfield2 : exp -> E -> exp -> E
+  | E_setfield3 : exp -> exp -> E -> E
   | E_delfield1 : E -> exp -> E
-  | E_delfield2 : forall (v : exp), val v -> E -> E
+  | E_delfield2 : exp -> E -> E
 .
 
 Inductive E' : exp -> exp -> Prop :=
@@ -711,9 +711,10 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_app_1 : forall E e1 e2 e',
       decompose e1 E e' ->
       decompose (exp_app e1 e2) (E_app_1 E e2) e'
-  | cxt_app_2 : forall E v e (p : val v) e',
+  | cxt_app_2 : forall E v e e',
+      val v ->
       decompose e E e' ->
-      decompose (exp_app v e) (E_app_2 p E) e'
+      decompose (exp_app v e) (E_app_2 v E) e'
   | cxt_succ : forall E e e',
       decompose e E e' ->
       decompose (exp_succ e) (E_succ E) e'
@@ -738,9 +739,10 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_set1 : forall e1 e2 E ae,
       decompose e1 E ae ->
       decompose (exp_set e1 e2) (E_setref1 E e2) ae
-  | cxt_set2 : forall e1 e2 E ae (v1 : val e1),
+  | cxt_set2 : forall e1 e2 E ae,
+      val e1 ->
       decompose e2 E ae ->
-      decompose (exp_set e1 e2) (E_setref2 v1 E) ae
+      decompose (exp_set e1 e2) (E_setref2 e1 E) ae
   | cxt_throw : forall e E ae,
       decompose e E ae ->
       decompose (exp_throw e) (E_throw E) ae
@@ -759,24 +761,28 @@ Inductive decompose : exp -> E -> exp -> Prop :=
   | cxt_getfield1 : forall o f E ae,
       decompose o E ae ->
       decompose (exp_getfield o f) (E_getfield1 E f) ae
-  | cxt_getfield2 : forall o f E ae (pf_o : val o),
+  | cxt_getfield2 : forall o f E ae,
+      val o ->
       decompose f E ae ->
-      decompose (exp_getfield o f) (E_getfield2 pf_o E) ae
+      decompose (exp_getfield o f) (E_getfield2 o E) ae
   | cxt_setfield1 : forall o f e E ae,
       decompose o E ae ->
       decompose (exp_setfield o f e) (E_setfield1 E f e) ae
-  | cxt_setfield2 : forall o f e E ae (v: val o),
+  | cxt_setfield2 : forall o f e E ae,
+      val o ->
       decompose f E ae ->
-      decompose (exp_setfield o f e) (E_setfield2 v E e) ae
-  | cxt_setfield3 : forall o f e E ae (v_o: val o) (v_f : val f),
+      decompose (exp_setfield o f e) (E_setfield2 o E e) ae
+  | cxt_setfield3 : forall o f e E ae,
+      val o -> val f ->
       decompose e E ae ->
-      decompose (exp_setfield o f e) (E_setfield3 v_o v_f E) ae
+      decompose (exp_setfield o f e) (E_setfield3 o f E) ae
   | cxt_delfield1 : forall o f E ae,
       decompose o E ae ->
       decompose (exp_delfield o f) (E_delfield1 E f) ae
-  | cxt_delfield2 : forall o f E ae (pf_o : val o),
+  | cxt_delfield2 : forall o f E ae,
+      val o ->
       decompose f E ae ->
-      decompose (exp_delfield o f) (E_delfield2 pf_o E) ae
+      decompose (exp_delfield o f) (E_delfield2 o E) ae
 .
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
@@ -784,8 +790,8 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 e E_hole e
   | cxt1_app_1 : forall e1 e2,
       decompose1 (exp_app e1 e2) (E_app_1 E_hole e2) e1
-  | cxt1_app_2 : forall v e (p : val v),
-      decompose1 (exp_app v e) (E_app_2 p E_hole) e
+  | cxt1_app_2 : forall v e,
+      val v -> decompose1 (exp_app v e) (E_app_2 v E_hole) e
   | cxt1_succ : forall e,
       decompose1 (exp_succ e) (E_succ E_hole) e
   | cxt1_not : forall e,
@@ -800,8 +806,8 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
      decompose1 (exp_deref e) (E_deref E_hole) e
   | cxt1_set1 : forall e1 e2,
       decompose1 (exp_set e1 e2) (E_setref1 E_hole e2) e1
-  | cxt1_set2 : forall e1 e2 (v1 : val e1),
-      decompose1 (exp_set e1 e2) (E_setref2 v1 E_hole) e2
+  | cxt1_set2 : forall e1 e2,
+      val e1 -> decompose1 (exp_set e1 e2) (E_setref2 e1 E_hole) e2
   | cxt1_throw : forall e,
       decompose1 (exp_throw e) (E_throw E_hole) e
   | cxt1_seq   : forall e1 e2,
@@ -810,24 +816,24 @@ Inductive decompose1 : exp -> E -> exp -> Prop :=
       decompose1 (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e
   | cxt1_getfield1 : forall o f,
       decompose1 (exp_getfield o f) (E_getfield1 E_hole f) o
-  | cxt1_getfield2 : forall o f (v : val o),
-      decompose1 (exp_getfield o f) (E_getfield2 v E_hole) f
+  | cxt1_getfield2 : forall o f,
+      val o -> decompose1 (exp_getfield o f) (E_getfield2 o E_hole) f
   | cxt1_setfield1 : forall o f e,
       decompose1 (exp_setfield o f e) (E_setfield1 E_hole f e) o
-  | cxt1_setfield2 : forall o f e (v : val o),
-      decompose1 (exp_setfield o f e) (E_setfield2 v E_hole e) f
-  | cxt1_setfield3 : forall o f e (v_o : val o) (v_f : val f),
-      decompose1 (exp_setfield o f e) (E_setfield3 v_o v_f E_hole) e
+  | cxt1_setfield2 : forall o f e,
+      val o -> decompose1 (exp_setfield o f e) (E_setfield2 o E_hole e) f
+  | cxt1_setfield3 : forall o f e,
+      val o -> val f -> decompose1 (exp_setfield o f e) (E_setfield3 o f E_hole) e
   | cxt1_delfield1 : forall o f,
       decompose1 (exp_delfield o f) (E_delfield1 E_hole f) o
-  | cxt1_delfield2 : forall o f (v : val o),
-      decompose1 (exp_delfield o f) (E_delfield2 v E_hole) f
+  | cxt1_delfield2 : forall o f,
+      val o -> decompose1 (exp_delfield o f) (E_delfield2 o E_hole) f
 .
 
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
   | E_app_1 cxt e2 => exp_app (plug e cxt) e2
-  | E_app_2 v pf cxt => exp_app v (plug e cxt)
+  | E_app_2 v cxt => exp_app v (plug e cxt)
   | E_succ cxt => exp_succ (plug e cxt)
   | E_not cxt => exp_not (plug e cxt)
   | E_if cxt e1 e2 => exp_if (plug e cxt) e1 e2
@@ -836,19 +842,19 @@ Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_ref cxt => exp_ref (plug e cxt)
   | E_deref cxt => exp_deref (plug e cxt)
   | E_setref1 cxt e2 => exp_set (plug e cxt) e2
-  | E_setref2 v1 _ cxt => exp_set v1 (plug e cxt)
+  | E_setref2 v1 cxt => exp_set v1 (plug e cxt)
   | E_catch cxt e2 => exp_catch (plug e cxt) e2
   | E_throw cxt    => exp_throw (plug e cxt)
   | E_seq cxt e2   => exp_seq (plug e cxt) e2
   | E_finally cxt e2 => exp_finally (plug e cxt) e2
   | E_obj vs es _ k cxt => exp_obj (vs++(k,plug e cxt)::es)
   | E_getfield1 cxt f => exp_getfield (plug e cxt) f
-  | E_getfield2 v _ cxt => exp_getfield v (plug e cxt)
+  | E_getfield2 v cxt => exp_getfield v (plug e cxt)
   | E_setfield1 cxt f e' => exp_setfield (plug e cxt) f e'
-  | E_setfield2 v _ cxt e' => exp_setfield v (plug e cxt) e'
-  | E_setfield3 v f _ _ cxt => exp_setfield v f (plug e cxt)
+  | E_setfield2 v cxt e' => exp_setfield v (plug e cxt) e'
+  | E_setfield3 v f cxt => exp_setfield v f (plug e cxt)
   | E_delfield1 cxt f => exp_delfield (plug e cxt) f
-  | E_delfield2 v _ cxt => exp_delfield v (plug e cxt)
+  | E_delfield2 v cxt => exp_delfield v (plug e cxt)
 end.
 
 Fixpoint delta exp := match exp with
@@ -1239,6 +1245,8 @@ Ltac destruct_decomp e := match goal with
   | _ => fail
 end.
 
+
+
 Lemma decompose_lc : forall E e ae,
   lc e ->
   decompose e E ae ->
@@ -1263,12 +1271,16 @@ Case "decompose1_obj".
 Qed.
 
 Inductive val' : exp -> Prop :=
+  | val'_err : val' exp_err
   | val'_val : forall v, val v -> val' v
-  | val'_err : val' exp_err.
+.
+
+Lemma lc_val' : forall v, val' v -> lc' 0 v.
+Proof with auto. intros. inversion H... Qed.
 
 Hint Constructors val' E' F. 
 
-Ltac solve_decomp'' := match goal with
+Ltac solve_decomp' := match goal with
   | [ Hval : val' ?e1
       |- val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') ]
     => let E0 := fresh "E" in
@@ -1283,22 +1295,58 @@ Ltac solve_decomp'' := match goal with
        destruct IH as [E0 [e0 cxt]]; eauto 7
 end.
 
-Ltac solve_decomp' := match goal with
-  | [ H1 : lc' 0 ?e,
-      IHe : val' ?e \/ 
-            (exists E' : E, exists ae : exp, decompose ?e E' ae)
-      |- val' ?exp \/ (exists E0 : E, exists ae : exp, decompose ?exp E0 ae) ]
-    => let HV := fresh "HV" in
-       let HE := fresh "HE" in
-       (destruct IHe as [HV | HE]; solve_decomp'')
-  | [ |- _] => fail "solve_decomp'"
+Ltac solve_decomp := match goal with
+  | [ IH : val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') |- _]
+    => (destruct IH;  solve_decomp')
+  | [ |- _ ] => fail "flasd"
 end.
 
-Ltac solve_decomp := match goal with
-  | [ IH : 0 = 0 -> _ |- _ ]
-    => (remember (IH (eq_refl 0)); solve_decomp')
-  | [ |- _ ] => fail "solve_decomp couldn't find hypothesis of shape '0 = 0 -> _'"
+Ltac clean_decomp := repeat match goal with
+  | [ H1 : ?cond, IH : ?cond -> ?exp |- _ ] => let H := fresh "IH" in
+    (assert exp as H by (apply IH; exact H1); clear IH)
+  | [ IH : 0 = 0 -> ?exp |- _ ]
+    => let H := fresh IH in
+       (assert exp as H by (apply IH; reflexivity); clear IH)
+  | [ IH : 1 = 0 -> _ |- _ ]
+    => clear IH
 end.
+
+Ltac invert_val' := repeat match goal with
+  | [ IH : val' ?e |- _ ]
+    => (inversion IH; clear IH)
+end.
+
+(* Ltac solve_decomp'' := match goal with *)
+(*   | [ Hval : val' ?e1 *)
+(*       |- val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') ] *)
+(*     => let E0 := fresh "E" in *)
+(*        let e0 := fresh "e" in *)
+(*        let cxt := fresh "cxt" in *)
+(*        (inversion Hval; subst; eauto 7; right; eauto 7; destruct Hval as [E0 [e0 cxt]]; eauto 7) *)
+(*   | [ IH: exists E' : E, exists ae : exp, decompose ?e E' ae *)
+(*       |- _ ] *)
+(*     => let E0 := fresh "E" in *)
+(*        let e0 := fresh "e" in *)
+(*        let cxt := fresh "cxt" in *)
+(*        destruct IH as [E0 [e0 cxt]]; eauto 7 *)
+(* end. *)
+
+(* Ltac solve_decomp' := match goal with *)
+(*   | [ H1 : lc' 0 ?e, *)
+(*       IHe : val' ?e \/  *)
+(*             (exists E' : E, exists ae : exp, decompose ?e E' ae) *)
+(*       |- val' ?exp \/ (exists E0 : E, exists ae : exp, decompose ?exp E0 ae) ] *)
+(*     => let HV := fresh "HV" in *)
+(*        let HE := fresh "HE" in *)
+(*        (destruct IHe as [HV | HE]; solve_decomp'') *)
+(*   | [ |- _] => fail "solve_decomp'" *)
+(* end. *)
+
+(* Ltac solve_decomp := match goal with *)
+(*   | [ IH : 0 = 0 -> _ |- _ ] *)
+(*     => (remember (IH (eq_refl 0)); solve_decomp') *)
+(*   | [ |- _ ] => fail "solve_decomp couldn't find hypothesis of shape '0 = 0 -> _'" *)
+(* end. *)
 
 Lemma decomp : forall e,
   lc e -> val' e \/ 
@@ -1307,26 +1355,20 @@ Proof with eauto 7.
 intros.
 unfold lc in H.
 remember 0.
-lc_cases (induction H) Case; intros; subst; try solve_decomp...
+remember H as LC. clear HeqLC.
+move H after LC.
+lc_cases (induction H) Case; intros; subst; clean_decomp; try solve_decomp...
 Case "lc_bvar". inversion H.
 Case "lc_app".
-destruct IHlc'1; try reflexivity;
-destruct IHlc'2; try reflexivity.
-inversion H1; subst; inversion H2; subst...
-right...
-right...
-right...
-right...
-destruct_decomp e2...
-destruct_decomp e1...
-destruct_decomp e1...
+  destruct IH0; invert_val'; subst. right; exists E_hole; eapply ex_intro; apply cxt_hole...
+  destruct IH; invert_val'; subst. right; exists E_hole; eapply ex_intro; apply cxt_hole...
+  right; exists E_hole; eapply ex_intro; apply cxt_hole...
+  destruct_decomp e2...
+  destruct_decomp e1...
 Case "lc_set".
-  destruct IHlc'1...
-  destruct IHlc'2...
-  inversion H1; inversion H2; subst...
-  right...
-  right...
-  right...
+  destruct IH0; invert_val'; subst. right; exists E_hole; eapply ex_intro; apply cxt_hole...
+  destruct IH; invert_val'; subst. right; exists E_hole; eapply ex_intro; apply cxt_hole...
+  right; exists E_hole; eapply ex_intro; apply cxt_hole...
   destruct_decomp e2...
   destruct_decomp e1...
 Case "lc_obj".
@@ -1334,36 +1376,44 @@ Case "lc_obj".
   assert (Split := (take_while l (fun kv => val (snd kv)) H1)).
   inversion Split. 
   SCase "Everything in (exp_obj l) is already a value".
-    left. constructor... unfold values; rewrite map_snd_snd_split. apply forall_snd_comm...
+    left. constructor. constructor... unfold values; rewrite map_snd_snd_split. apply forall_snd_comm...
   SCase "Something in (exp_obj l) is not yet a value".
-    right. inversion H2; clear H2. inversion H3; clear H3. 
-    inversion H2; clear H2. inversion H3; clear H3. inversion H4; clear H4.
+    inversion_clear H2. inversion_clear H3. 
+    inversion_clear H2. inversion_clear H3. inversion_clear H4.
     remember x1 as x1'; destruct x1'.
     assert (Forall val (values x)). unfold values; rewrite map_snd_snd_split; apply forall_snd_comm...
-    assert (val e \/ (exists E, exists ae, decompose e E ae)).   
-      assert (Forall (fun e => val e \/ exists E, exists ae, decompose e E ae) (map (snd (B:=exp)) l)). 
-      induction H0; constructor. apply H0... auto. clear H0.
-      rewrite Forall_forall in H6. apply H6.  rewrite map_snd_snd_split. rewrite H2.
-      rewrite snd_split_comm. simpl. apply in_middle. 
-    simpl in H5. inversion H6. contradiction. 
-    inversion H7. inversion H8. exists (E_obj x x0 H4 s x2). exists x3. 
-    rewrite H2. apply cxt_obj...
-Case "lc_getfield". 
-  destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); right | right].
-    exists E_hole; exists (exp_getfield o f). constructor... 
-    inversion_clear H0. inversion_clear H1. exists (E_getfield2 H x); exists x0. constructor...
-    inversion_clear H. inversion_clear H0. exists (E_getfield1 x f); exists x0. constructor...
+    assert (val' e \/ (exists E, exists ae, decompose e E ae)).   
+      inversion LC. rewrite H2 in H0. rewrite map_snd_snd_split in H0. rewrite snd_split_comm in H0.
+      simpl in H0. rewrite forall_app in H0. inversion_clear H0. inversion_clear H11.
+      apply H0... rewrite Forall_forall in H9; apply H9. subst. unfold values. 
+      rewrite map_snd_snd_split. rewrite snd_split_comm. simpl. apply in_middle. 
+    inversion H6. 
+      SSCase "e is a val'". invert_val'; subst.
+        SSSCase "e is exp_err". right.
+          exists E_hole; eapply ex_intro; apply cxt_hole... constructor. constructor. constructor...
+          rewrite Forall_forall in H4; rewrite Forall_forall; intros; apply lc_val...
+        SSSCase "e is a val". contradiction. 
+      SSCase "e is not a val'".
+        inversion H7. inversion H8. right. exists (E_obj x x0 H4 s x2). exists x3. 
+        rewrite H2. apply cxt_obj...
+Case "lc_getfield".
+  inversion LC.
+  destruct IHlc'0; subst... inversion H4... right; exists E_hole; eapply ex_intro... 
+  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro...
+  destruct_decomp f...
+  destruct_decomp o...
 Case "lc_setfield".
-  destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); [destruct (IHlc'1 (eq_refl 0)); right | right] | right].
-    exists E_hole; exists (exp_setfield o f e). constructor...
-    inversion_clear H1; inversion_clear H2. exists (E_setfield3 H H0 x); exists x0. constructor...
-    inversion_clear H0; inversion_clear H1. exists (E_setfield2 H x e); exists x0. constructor...
-    inversion_clear H; inversion_clear H0. exists (E_setfield1 x f e); exists x0. constructor...
+  inversion LC.
+  destruct IHlc'0; subst... inversion H6... right; exists E_hole; eapply ex_intro...
+  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro...
+  destruct IHlc'2; subst... inversion H7... right; exists E_hole; eapply ex_intro...
+  destruct_decomp e... destruct_decomp f... destruct_decomp o...
 Case "lc_delfield".
-  destruct (IHlc' (eq_refl 0)); [destruct (IHlc'0 (eq_refl 0)); right | right].
-    exists E_hole; exists (exp_delfield o f). constructor... 
-    inversion_clear H0. inversion_clear H1. exists (E_delfield2 H x); exists x0. constructor...
-    inversion_clear H. inversion_clear H0. exists (E_delfield1 x f); exists x0. constructor...
+  inversion LC.
+  destruct IHlc'0; subst... inversion H4... right; exists E_hole; eapply ex_intro... 
+  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro...
+  destruct_decomp f...
+  destruct_decomp o...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
