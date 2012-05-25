@@ -1277,7 +1277,6 @@ Ltac solve_break_err H e :=
         | [ H: exp_break ?x ?v = _ |- _] => try solve [apply redex_break with x v; auto; constructor; auto| constructor; auto]
         end]. 
 
-
 Lemma decomp : forall e,
   lc e -> val' e \/ 
           (exists E, exists ae, decompose e E ae).
