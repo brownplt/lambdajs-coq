@@ -1348,14 +1348,15 @@ end.
 
 Lemma progress : forall sto e,
   lc e ->
-  val' e \/ (exists e', exists sto', step sto e sto' e').
+  val e \/ e = exp_err \/ (exists e', exists sto', step sto e sto' e').
 Proof with eauto.
 intros.
 remember H as HLC; clear HeqHLC.
 apply decomp in H.
-destruct H...
+destruct H. destruct H...
+right. right. exists exp_err. exists sto0. auto.
 destruct_decomp e...
-right.
+right. right.
 assert (LC.ae ae). apply decompose_ae in H...
 
 
