@@ -787,8 +787,6 @@ Inductive decompose : exp -> E -> exp -> Prop :=
 .
 
 Inductive decompose1 : exp -> E -> exp -> Prop :=
-  | cxt1_decompose1 : forall e,
-      decompose1 e E_hole e
   | cxt1_app_1 : forall e1 e2,
       decompose1 (exp_app e1 e2) (E_app_1 E_hole e2) e1
   | cxt1_app_2 : forall v e,
@@ -998,7 +996,10 @@ Inductive step : sto -> exp -> sto -> exp -> Prop :=
     lc e ->
     decompose e E (exp_set (exp_loc l) v) ->
     AtomEnv.find l s = None ->
-    step s e s (plug exp_err E).
+    step s e s (plug exp_err E)
+  | step_break_err : forall x v s,
+    val v -> step s (exp_break x v) s exp_err
+.
 
 End Definitions.
 
@@ -1149,8 +1150,7 @@ Tactic Notation "decompose_cases" tactic(first) ident(c) :=
 ].
 Tactic Notation "decompose1_cases" tactic(first) ident(c) :=
   first;
-    [ Case_aux c "decompose1_hole"
-    | Case_aux c "decompose1_app_1"
+    [ Case_aux c "decompose1_app_1"
     | Case_aux c "decompose1_app_2"
     | Case_aux c "decompose1_succ"
     | Case_aux c "decompose1_not"
@@ -1215,7 +1215,9 @@ Tactic Notation "step_cases" tactic(first) ident(c) :=
   | Case_aux c "step_deref"
   | Case_aux c "step_deref_err"
   | Case_aux c "step_setref"
-  | Case_aux c "step_setref_err" ].
+  | Case_aux c "step_setref_err"
+  | Case_aux c "step_break_err"
+  ].
 
 Hint Unfold values fieldnames map_values.
 Hint Unfold open lc.
