@@ -1282,27 +1282,6 @@ Proof with auto. intros. inversion H... Qed.
 
 Hint Constructors val' E' F. 
 
-Ltac solve_decomp' := match goal with
-  | [ Hval : val' ?e1
-      |- val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') ]
-    => let E0 := fresh "E" in
-       let e0 := fresh "e" in
-       let cxt := fresh "cxt" in
-       (inversion Hval; subst; eauto 7; right; eauto 7; destruct Hval as [E0 [e0 cxt]]; eauto 7)
-  | [ IH: exists E' : E, exists ae : exp, decompose ?e E' ae
-      |- _ ]
-    => let E0 := fresh "E" in
-       let e0 := fresh "e" in
-       let cxt := fresh "cxt" in
-       destruct IH as [E0 [e0 cxt]]; eauto 7
-end.
-
-Ltac solve_decomp := match goal with
-  | [ IH : val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') |- _]
-    => (destruct IH;  solve_decomp')
-  | [ |- _ ] => fail "flasd"
-end.
-
 Ltac clean_decomp := repeat match goal with
   | [ H1 : ?cond, IH : ?cond -> ?exp |- _ ] => let H := fresh "IH" in
     (assert exp as H by (apply IH; exact H1); clear IH)
@@ -1318,37 +1297,26 @@ Ltac invert_val' := repeat match goal with
     => (inversion IH; clear IH)
 end.
 
-(* Ltac solve_decomp'' := match goal with *)
-(*   | [ Hval : val' ?e1 *)
-(*       |- val' ?e2 \/ (exists E' : E, exists e' : exp, decompose ?e2 E' e') ] *)
-(*     => let E0 := fresh "E" in *)
-(*        let e0 := fresh "e" in *)
-(*        let cxt := fresh "cxt" in *)
-(*        (inversion Hval; subst; eauto 7; right; eauto 7; destruct Hval as [E0 [e0 cxt]]; eauto 7) *)
-(*   | [ IH: exists E' : E, exists ae : exp, decompose ?e E' ae *)
-(*       |- _ ] *)
-(*     => let E0 := fresh "E" in *)
-(*        let e0 := fresh "e" in *)
-(*        let cxt := fresh "cxt" in *)
-(*        destruct IH as [E0 [e0 cxt]]; eauto 7 *)
-(* end. *)
-
-(* Ltac solve_decomp' := match goal with *)
-(*   | [ H1 : lc' 0 ?e, *)
-(*       IHe : val' ?e \/  *)
-(*             (exists E' : E, exists ae : exp, decompose ?e E' ae) *)
-(*       |- val' ?exp \/ (exists E0 : E, exists ae : exp, decompose ?exp E0 ae) ] *)
-(*     => let HV := fresh "HV" in *)
-(*        let HE := fresh "HE" in *)
-(*        (destruct IHe as [HV | HE]; solve_decomp'') *)
-(*   | [ |- _] => fail "solve_decomp'" *)
-(* end. *)
-
-(* Ltac solve_decomp := match goal with *)
-(*   | [ IH : 0 = 0 -> _ |- _ ] *)
-(*     => (remember (IH (eq_refl 0)); solve_decomp') *)
-(*   | [ |- _ ] => fail "solve_decomp couldn't find hypothesis of shape '0 = 0 -> _'" *)
-(* end. *)
+Ltac multi_solve_decomp := match goal with
+  |  [ HLC : lc' 0 ?e',
+       H :  lc' 0 ?e' -> val' ?e \/  (exists E : E, exists ae : exp, decompose ?e E ae)
+       |- _ ] => 
+       assert (val' e \/  (exists E : E, exists ae : exp, decompose e E ae)) by (apply H; exact HLC);
+       clear H;
+       multi_solve_decomp
+  |  [ H :  val' ?e \/ 
+            (exists E : E, exists ae : exp, decompose ?e E ae)
+       |- _ ] =>
+      let V := fresh "V" in
+      let E := fresh "E" in
+      let ae := fresh "ae" in
+      let H' := fresh "H" in
+      destruct H as [V | [E [ae H']]]; multi_solve_decomp
+ 
+  | [ H : val' ?e |- _ ]
+    => inversion H; clear H; multi_solve_decomp
+  | _ => subst; eauto 10
+end.
 
 Lemma decomp : forall e,
   lc e -> val' e \/ 
@@ -1359,20 +1327,9 @@ unfold lc in H.
 remember 0.
 remember H as LC. clear HeqLC.
 move H after LC.
-lc_cases (induction H) Case; intros; subst; clean_decomp; try solve_decomp...
-Case "lc_bvar". inversion H.
-Case "lc_app".
-  inversion LC.
-  destruct IH0; subst... inversion H6... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct IH; subst... inversion H3... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct_decomp e2...
-  destruct_decomp e1...
-Case "lc_set".
-  inversion LC.
-  destruct IH0; subst... inversion H6... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct IH; subst... inversion H3... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct_decomp e2...
-  destruct_decomp e1...
+lc_cases (induction H) Case; intros; subst; clean_decomp; try solve [ inversion LC; multi_solve_decomp ].
+Case "lc_bvar".
+  inversion H.
 Case "lc_obj".
   assert (forall x : string * exp, In x l -> decidable (val (snd x))). intros; apply decide_val.
   assert (Split := (take_while l (fun kv => val (snd kv)) H1)).
@@ -1399,24 +1356,6 @@ Case "lc_obj".
       SSCase "e is not a val'".
         inversion H7. inversion H8. right. exists (E_obj x x0 H4 s x2). exists x3. 
         rewrite H2. apply cxt_obj...
-Case "lc_getfield".
-  inversion LC.
-  destruct IHlc'0; subst... inversion H4... right; exists E_hole; eapply ex_intro; apply cxt_hole... 
-  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct_decomp f...
-  destruct_decomp o...
-Case "lc_setfield".
-  inversion LC.
-  destruct IHlc'0; subst... inversion H6... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct IHlc'2; subst... inversion H7... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct_decomp e... destruct_decomp f... destruct_decomp o...
-Case "lc_delfield".
-  inversion LC.
-  destruct IHlc'0; subst... inversion H4... right; exists E_hole; eapply ex_intro; apply cxt_hole... 
-  destruct IHlc'1; subst... inversion H1... right; exists E_hole; eapply ex_intro; apply cxt_hole...
-  destruct_decomp f...
-  destruct_decomp o...
 Qed.
 
 Hint Resolve decompose_lc decompose1_lc.
