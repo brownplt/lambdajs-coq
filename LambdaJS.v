@@ -1266,7 +1266,8 @@ end.
 
 Ltac multi_solve_decomp := match goal with
   |  [ HLC : lc' 0 ?e',
-       H :  lc' 0 ?e' -> val' ?e \/  (exists E : E, exists ae : exp, decompose ?e E ae)
+       H :  lc' 0 ?e' -> val' ?e \/ _ 
+       (* should be  val ?e' \/ (exists (E : E) (ae : exp), decomposition ?e E ae), but coq8.4 chokes on it *)
        |- _ ] => 
        assert (val' e \/  (exists E : E, exists ae : exp, decompose e E ae)) by (apply H; exact HLC);
        clear H;
