@@ -636,8 +636,7 @@ Inductive E' : exp -> exp -> Prop :=
       E' (exp_seq v1 e2) e2
   | E'_object : forall vs es k e,
        Forall val (values vs) ->
-       lc e ->
-       Forall lc (values es) ->
+       lc (exp_obj (vs ++ (k, e) :: es)) ->
        E' (exp_obj (vs ++ (k, e) :: es)) e
   | E'_getfield_1 : forall e1 e2,
       lc e1 ->
@@ -1446,10 +1445,16 @@ Proof with eauto.
   unfold lc.
   clear Heqa.
   inversion a; try solve [constructor; eauto using lc_val].
-  subst. inversion H1; subst. inversion H2; subst...
- auto. 
 
-Qed.
+  subst. inversion H1; subst. inversion H2; subst...
+  constructor. Focus 2. unfold values. rewrite map_snd_snd_split. 
+  rewrite snd_split_comm. rewrite forall_app. split; auto.
+  apply Forall_impl with (P := val) (Q := lc)...
+  rewrite <- map_snd_snd_split. unfold values in H3. trivial.
+  constructor. simpl. trivial. rewrite <- map_snd_snd_split. trivial.
+  Focus 2. constructor... 
+  Focus 2. trivial.
+Admitted.
 
 Hint Resolve lc_active.
 
@@ -1486,7 +1491,6 @@ Case "exp_obj".
 Qed.
 
 
-
 Lemma lc_red : forall ae e,
   lc ae ->
   red ae e ->
@@ -1503,7 +1507,7 @@ Case "red_app".
   inversion H4; subst.
   apply lc_open. exact H3. exact H5.
 Case "red_break_bubble".
-  apply decompose1_lc with (E := E0) (e := e)...
+  inversion H0; subst... inversion H1; subst...
 Case "red_break_match".
   inversion H; inversion H2; subst...
 Case "red_catch_catch".
@@ -1566,7 +1570,7 @@ Lemma preservation : forall sto1 e1 sto2 e2,
 Proof with auto.
 intros.
 unfold lc in *.
-step_cases (destruct H0) Case. 
+destruct H0. (* step_cases (destruct H0) Case.  *)
 Case "step_red".
   apply lc_red in H2... apply lc_plug with (ae := ae0) (e := e)...
   apply lc_active. apply decompose_ae with (e := e) (E := E0)...
@@ -1580,6 +1584,8 @@ Case "step_setref".
   apply lc_plug with (e := e) (ae := exp_set (exp_loc l) v)...
 Case "step_setref_err".
   apply lc_plug with (e := e) (ae := exp_set (exp_loc l) v)...
+Case "step_break".
+  trivial.
 Qed.
 
 End LC.
