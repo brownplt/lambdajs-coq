@@ -1266,8 +1266,7 @@ end.
 
 Ltac multi_solve_decomp := match goal with
   |  [ HLC : lc' 0 ?e',
-       H :  lc' 0 ?e' -> val' ?e \/ _ 
-       (* should be  val ?e' \/ (exists (E : E) (ae : exp), decomposition ?e E ae), but coq8.4 chokes on it *)
+       H :  lc' 0 ?e' -> val' ?e \/  (exists E : E, exists ae : exp, decompose ?e E ae)
        |- _ ] => 
        assert (val' e \/  (exists E : E, exists ae : exp, decompose e E ae)) by (apply H; exact HLC);
        clear H;
@@ -1318,19 +1317,12 @@ Case "lc_obj".
         SSSCase "e is exp_err". right.
           exists E_hole. eapply ex_intro. apply cxt_hole. constructor. apply LC.
           constructor. constructor; auto.
-          inversion LC; subst.
-          unfold values in H9. rewrite map_snd_snd_split in H9. rewrite snd_split_comm in H9.
-          rewrite forall_app in H9. destruct H9. inversion H8. unfold values. rewrite map_snd_snd_split. auto. 
         SSSCase "e is a val". contradiction. 
         SSSCase "e is a break".
           right.
           exists E_hole. eapply ex_intro. apply cxt_hole. 
           apply redex_break with (x := x2) (v := v). trivial.
           constructor. constructor. trivial. auto.
-          inversion LC; subst.
-          unfold values in H10. rewrite map_snd_snd_split in H10. rewrite snd_split_comm in H10.
-          rewrite forall_app in H10. destruct H10. inversion H9. unfold values. rewrite map_snd_snd_split.
-          auto.
       SSCase "e is not a val'".
         inversion H7. inversion H8. right. exists (E_obj x x0 H4 s x2). exists x3. 
         rewrite H2. apply cxt_obj...
@@ -1447,15 +1439,9 @@ Proof with eauto.
   clear Heqa.
   inversion a; try solve [constructor; eauto using lc_val].
 
-  subst. inversion H1; subst. inversion H2; subst...
-  constructor. Focus 2. unfold values. rewrite map_snd_snd_split. 
-  rewrite snd_split_comm. rewrite forall_app. split; auto.
-  apply Forall_impl with (P := val) (Q := lc)...
-  rewrite <- map_snd_snd_split. unfold values in H3. trivial.
-  constructor. simpl. trivial. rewrite <- map_snd_snd_split. trivial.
-  Focus 2. constructor... 
-  Focus 2. trivial.
-Admitted.
+  subst. inversion H1; subst... inversion H2; subst...
+  trivial.
+Qed.
 
 Hint Resolve lc_active.
 
@@ -1509,6 +1495,13 @@ Case "red_app".
   apply lc_open. exact H3. exact H5.
 Case "red_break_bubble".
   inversion H0; subst... inversion H1; subst...
+  inversion H3; subst... 
+  unfold values in H7.
+  rewrite map_app in H7.
+  rewrite forall_app in H7. 
+  destruct H7.
+  inversion H6.
+  trivial.
 Case "red_break_match".
   inversion H; inversion H2; subst...
 Case "red_catch_catch".
