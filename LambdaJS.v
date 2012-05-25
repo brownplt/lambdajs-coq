@@ -637,7 +637,7 @@ Inductive E' : exp -> exp -> Prop :=
   | E'_object : forall vs es k e,
        Forall val (values vs) ->
        lc e ->
-       Forall lc (values vs) ->
+       Forall lc (values es) ->
        E' (exp_obj (vs ++ (k, e) :: es)) e
   | E'_getfield_1 : forall e1 e2,
       lc e1 ->
@@ -679,6 +679,15 @@ Inductive F : exp -> exp -> Prop :=
       lc e ->
       F (exp_label x e) e.
 
+Inductive G : exp -> exp -> Prop :=
+   | G_E' : forall e1 e2,
+       E' e1 e2 ->
+       G e1 e2
+   | G_catch : forall e1 e2,
+       lc e1 ->
+       lc' 1 e2 ->
+       G (exp_catch e1 e2) e1.
+
 Inductive ae : exp -> Prop :=
   | redex_app  : forall e1 e2, val e1 -> val e2 -> ae (exp_app e1 e2)
   | redex_succ : forall e, val e -> ae (exp_succ e)
@@ -686,7 +695,13 @@ Inductive ae : exp -> Prop :=
   | redex_if   : forall e e1 e2, 
       val e -> lc e1 -> lc e2 -> ae (exp_if e e1 e2)
   | redex_label : forall x v, val v -> ae (exp_label x v)
-  | redex_break : forall x v, val v -> ae (exp_break x v)
+   | redex_label_match_and_mismatch : forall x y v,
+       val v ->
+       ae (exp_label x (exp_break y v))
+   | redex_break : forall x e v, 
+     val v -> 
+     G e (exp_break x v) ->
+     ae e
   | redex_ref   : forall v, val v -> ae (exp_ref v)
   | redex_deref : forall v, val v -> ae (exp_deref v)
   | redex_set  : forall v1 v2, val v1 -> val v2 -> ae (exp_set v1 v2)
@@ -696,6 +711,10 @@ Inductive ae : exp -> Prop :=
   | redex_seq   : forall v e, val v -> lc e -> ae (exp_seq v e)
   | redex_finally : forall v e, val v -> lc e -> ae (exp_finally v e)
   | redex_finally_err : forall e , lc e -> ae (exp_finally exp_err e)
+  | redex_finally_break : forall x v e, 
+      val v -> 
+      lc e -> 
+       ae (exp_finally (exp_break x v) e)
   | redex_err_bubble : forall e,
       lc e ->
       F e exp_err ->
@@ -786,51 +805,6 @@ Inductive decompose : exp -> E -> exp -> Prop :=
       decompose (exp_delfield o f) (E_delfield2 o E) ae
 .
 
-Inductive decompose1 : exp -> E -> exp -> Prop :=
-  | cxt1_decompose1 : forall e,
-      decompose1 e E_hole e
-  | cxt1_app_1 : forall e1 e2,
-      decompose1 (exp_app e1 e2) (E_app_1 E_hole e2) e1
-  | cxt1_app_2 : forall v e,
-      val v -> decompose1 (exp_app v e) (E_app_2 v E_hole) e
-  | cxt1_succ : forall e,
-      decompose1 (exp_succ e) (E_succ E_hole) e
-  | cxt1_not : forall e,
-      decompose1 (exp_not e) (E_not E_hole) e
-  | cxt1_if : forall e e1 e2,
-      decompose1 (exp_if e e1 e2) (E_if E_hole e1 e2) e
-  | cxt1_break : forall x e,
-      decompose1 (exp_break x e) (E_break x E_hole) e
-  | cxt1_ref : forall e,
-     decompose1 (exp_ref e) (E_ref E_hole) e
-  | cxt1_deref : forall e,
-     decompose1 (exp_deref e) (E_deref E_hole) e
-  | cxt1_set1 : forall e1 e2,
-      decompose1 (exp_set e1 e2) (E_setref1 E_hole e2) e1
-  | cxt1_set2 : forall e1 e2,
-      val e1 -> decompose1 (exp_set e1 e2) (E_setref2 e1 E_hole) e2
-  | cxt1_throw : forall e,
-      decompose1 (exp_throw e) (E_throw E_hole) e
-  | cxt1_seq   : forall e1 e2,
-      decompose1 (exp_seq e1 e2) (E_seq E_hole e2) e1
-  | cxt1_obj  : forall vs es k e E (are_vals : Forall val (values vs)),
-      decompose1 (exp_obj (vs++(k,e)::es)) (E_obj vs es are_vals k E) e
-  | cxt1_getfield1 : forall o f,
-      decompose1 (exp_getfield o f) (E_getfield1 E_hole f) o
-  | cxt1_getfield2 : forall o f,
-      val o -> decompose1 (exp_getfield o f) (E_getfield2 o E_hole) f
-  | cxt1_setfield1 : forall o f e,
-      decompose1 (exp_setfield o f e) (E_setfield1 E_hole f e) o
-  | cxt1_setfield2 : forall o f e,
-      val o -> decompose1 (exp_setfield o f e) (E_setfield2 o E_hole e) f
-  | cxt1_setfield3 : forall o f e,
-      val o -> val f -> decompose1 (exp_setfield o f e) (E_setfield3 o f E_hole) e
-  | cxt1_delfield1 : forall o f,
-      decompose1 (exp_delfield o f) (E_delfield1 E_hole f) o
-  | cxt1_delfield2 : forall o f,
-      val o -> decompose1 (exp_delfield o f) (E_delfield2 o E_hole) f
-.
-
 Fixpoint plug (e : exp) (cxt : E) := match cxt with
   | E_hole => e
   | E_app_1 cxt e2 => exp_app (plug e cxt) e2
@@ -882,8 +856,8 @@ Inductive red :  exp -> exp -> Prop :=
       red (exp_if v1 e2 e3) exp_err
   | red_label : forall x v,
       val v -> red (exp_label x v) v
-  | red_break_bubble : forall x v E e,
-    decompose1 e E (exp_break x v) ->
+  | red_break_bubble : forall x v e,
+    G e (exp_break x v) ->
     red e (exp_break x v)
   | red_break_match : forall x v,
     red (exp_label x (exp_break x v)) v
@@ -998,7 +972,11 @@ Inductive step : sto -> exp -> sto -> exp -> Prop :=
     lc e ->
     decompose e E (exp_set (exp_loc l) v) ->
     AtomEnv.find l s = None ->
-    step s e s (plug exp_err E).
+    step s e s (plug exp_err E)
+  | step_err : forall x v s,
+      val v ->
+      step s (exp_break x v) s exp_err
+.
 
 End Definitions.
 
@@ -1224,7 +1202,7 @@ Hint Resolve lc_val.
 Hint Resolve lc_ascend.
 Hint Constructors tagof tag.
 Hint Constructors decompose E val exp ae exp val ae red
-                  step decompose1 stored_val.
+                  step stored_val.
 
 Lemma decompose_ae : forall e E e',
   decompose e E e' -> ae e'.
@@ -1261,26 +1239,16 @@ Case "decompose_obj".
   unfold values; rewrite map_app; simpl; apply in_middle.
 Qed.
 
-Lemma decompose1_lc : forall E e ae,
-  lc e ->
-  decompose1 e E ae ->
-  lc ae.
-Proof. intros. decompose1_cases (induction H0) Case; try solve [inversion H; eauto | auto]. 
-Case "decompose1_obj".
-  apply Forall_in with (l := values (vs ++ (k, e) :: es)). inversion H. auto.
-  unfold values. rewrite map_app. simpl.
-  apply in_middle.
-Qed.
-
 Inductive val' : exp -> Prop :=
   | val'_err : val' exp_err
   | val'_val : forall v, val v -> val' v
+  | val'_break : forall x v, val v -> val' (exp_break x v)
 .
 
 Lemma lc_val' : forall v, val' v -> lc' 0 v.
 Proof with auto. intros. inversion H... Qed.
 
-Hint Constructors val' E' F. 
+Hint Constructors val' E' F G. 
 
 Ltac clean_decomp := repeat match goal with
   | [ H1 : ?cond, IH : ?cond -> ?exp |- _ ] => let H := fresh "IH" in
@@ -1311,8 +1279,7 @@ Ltac multi_solve_decomp := match goal with
       let E := fresh "E" in
       let ae := fresh "ae" in
       let H' := fresh "H" in
-      destruct H as [V | [E [ae H']]]; multi_solve_decomp
- 
+      destruct H as [V | [E [ae H']]]; multi_solve_decomp 
   | [ H : val' ?e |- _ ]
     => inversion H; clear H; multi_solve_decomp
   | _ => subst; eauto 10
@@ -1349,16 +1316,27 @@ Case "lc_obj".
     inversion H6. 
       SSCase "e is a val'". invert_val'; subst.
         SSSCase "e is exp_err". right.
-          exists E_hole; eapply ex_intro; apply cxt_hole... constructor. apply LC.
-          constructor. constructor...
-          rewrite Forall_forall in H4; rewrite Forall_forall; intros; apply lc_val...
+          exists E_hole. eapply ex_intro. apply cxt_hole. constructor. apply LC.
+          constructor. constructor; auto.
+          inversion LC; subst.
+          unfold values in H9. rewrite map_snd_snd_split in H9. rewrite snd_split_comm in H9.
+          rewrite forall_app in H9. destruct H9. inversion H8. unfold values. rewrite map_snd_snd_split. auto. 
         SSSCase "e is a val". contradiction. 
+        SSSCase "e is a break".
+          right.
+          exists E_hole. eapply ex_intro. apply cxt_hole. 
+          apply redex_break with (x := x2) (v := v). trivial.
+          constructor. constructor. trivial. auto.
+          inversion LC; subst.
+          unfold values in H10. rewrite map_snd_snd_split in H10. rewrite snd_split_comm in H10.
+          rewrite forall_app in H10. destruct H10. inversion H9. unfold values. rewrite map_snd_snd_split.
+          auto.
       SSCase "e is not a val'".
         inversion H7. inversion H8. right. exists (E_obj x x0 H4 s x2). exists x3. 
         rewrite H2. apply cxt_obj...
 Qed.
 
-Hint Resolve decompose_lc decompose1_lc.
+Hint Resolve decompose_lc.
 Hint Unfold not.
 
 (* Invert tagof *)
@@ -1379,9 +1357,13 @@ right.
 assert (LC.ae ae). apply decompose_ae in H...
 
 
-redex_cases (inversion H0) Case; subst...
+inversion H0; subst...
+(* redex_cases (inversion H0) Case; subst... *)
 Case "redex_app". val_cases (inversion H1) SCase; subst; eauto 6.
 Case "redex_if". val_cases (inversion H1) SCase; subst; first [destruct b; eauto 6 | eauto 6]. 
+Case "redex_label_break".
+  assert ({ x = y } + { ~ x = y }). apply Atom.atom_eq_dec.
+  destruct H2; subst...
 Case "redex_ref".
 assert (exists l : atom, 
           ~ In l (map (@fst AtomEnv.key stored_val) (AtomEnv.elements sto0))) 
@@ -1456,11 +1438,18 @@ Qed.
 
 Hint Resolve lc_plug.
 
-
 Lemma lc_active : forall e,
   ae e -> lc e.
-Proof with eauto. intros. remember H. unfold lc. clear Heqa. redex_cases (inversion a) Case; 
-  try solve [constructor; eauto using lc_val]. auto. Qed.
+Proof with eauto.
+  intros.
+  remember H.
+  unfold lc.
+  clear Heqa.
+  inversion a; try solve [constructor; eauto using lc_val].
+  subst. inversion H1; subst. inversion H2; subst...
+ auto. 
+
+Qed.
 
 Hint Resolve lc_active.
 
