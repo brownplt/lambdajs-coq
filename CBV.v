@@ -17,11 +17,9 @@ Module Type ATOM.
 
 End ATOM.
 
-Module LC (Import Atom : ATOM).
+Module CBV_Defs (Import Atom : ATOM).
 
 Definition atom := Atom.atom. (* free variables *)
-
-Section Definitions.
 
 Inductive exp : Set :=
   | exp_bvar : nat -> exp (* bound variables as de Brujin indices *)
@@ -54,11 +52,11 @@ Inductive val' : exp -> Prop :=
   | val'_val : forall v, val v -> val' v
   | val'_err : forall v, val v -> val' (exp_err v).
 
-Inductive E : Set :=
-  | E_hole  : E
-  | E_app_1 : E -> exp -> E
-  | E_app_2 : exp -> E -> E
-  | E_err   : E -> E.
+Inductive C : Set :=
+  | C_hole  : C
+  | C_app_1 : C -> exp -> C
+  | C_app_2 : exp -> C -> C
+  | C_err   : C -> C.
 
 Inductive red :  exp -> exp -> Prop := 
   | red_app  : forall e v, 
@@ -78,64 +76,68 @@ Inductive ae : exp -> Prop :=
   | ae_err_err  : forall v,
       val v -> ae (exp_err (exp_err v)).
 
-Inductive cxt : exp -> E -> exp -> Prop :=
-  | cxt_hole : forall e,
+Inductive E : exp -> C -> exp -> Prop :=
+  | E_hole : forall e,
       ae e ->
-      cxt e E_hole e
-  | cxt_app_1 : forall E e1 e2 e',
-      cxt e1 E e' ->
-      cxt (exp_app e1 e2) (E_app_1 E e2) e'
-  | cxt_app_2 : forall E v e e',
-      cxt e E e' ->
+      E e C_hole e
+  | E_app_1 : forall C e1 e2 e',
+      E e1 C e' ->
+      E (exp_app e1 e2) (C_app_1 C e2) e'
+  | E_app_2 : forall C v e e',
+      E e C e' ->
       val v ->
-      cxt (exp_app v e) (E_app_2 v E) e'
-  | cxt_err : forall e E ae,
-      cxt e E ae ->
-      cxt (exp_err e) (E_err E) ae.
+      E (exp_app v e) (C_app_2 v C) e'
+  | E_err : forall e C ae,
+      E e C ae ->
+      E (exp_err e) (C_err C) ae.
 
-Fixpoint plug (e : exp) (cxt : E) := match cxt with
-  | E_hole           => e
-  | E_app_1 cxt e2   => exp_app (plug e cxt) e2
-  | E_app_2 v cxt    => exp_app v (plug e cxt)
-  | E_err cxt        => exp_err (plug e cxt)
+Fixpoint plug (e : exp) (cxt : C) := match cxt with
+  | C_hole           => e
+  | C_app_1 cxt e2   => exp_app (plug e cxt) e2
+  | C_app_2 v cxt    => exp_app v (plug e cxt)
+  | C_err cxt        => exp_err (plug e cxt)
 end.
 
 Inductive step : exp -> exp -> Prop :=
-  | step_red : forall e E ae e',
+  | step_red : forall e C ae e',
       lc e ->
-      cxt e E ae ->
+      E e C ae ->
       red ae e' ->
-      step e (plug e' E).
+      step e (plug e' C).
 
-End Definitions.
-
-Hint Constructors cxt ae E val exp val lc' red step val'.
+Hint Constructors C ae E val exp val lc' red step val'.
 Hint Unfold open lc.
 
-Lemma plug_ok : forall e E e',
-  cxt e E e' -> plug e' E = e.
+End CBV_Defs.
+
+Module CBV_Proofs (Import Atom : ATOM).
+
+Module Import Defs := CBV_Defs (Atom).
+
+Lemma plug_ok : forall e C e',
+  E e C e' -> plug e' C = e.
 Proof.
   intros.
-  induction H; simpl; try (auto || rewrite -> IHcxt; auto).
+  induction H; simpl; try (auto || rewrite -> IHE; auto).
 Qed.
 
-Lemma cxt_lc : forall E e ae,
+Lemma E_lc : forall C e ae,
   lc e ->
-  cxt e E ae ->
+  E e C ae ->
   lc ae.
 Proof. intros. induction H0; inversion H; eauto. Qed.
 
 Ltac destruct_decomp e := match goal with
-  |  [ H : exists E : E, exists ae : exp, cxt e E ae |- _ ] =>
-       destruct H as [E [ae H]]
+  |  [ H : exists C : C, exists ae : exp, E e C ae |- _ ] =>
+       destruct H as [C [ae H]]
   | _ => fail
 end.
 
 Ltac solve_decomp' := match goal with
   | [ H1 : lc' 0 ?e,
       IHe : val ?e \/ 
-            (exists E' : E, exists ae : exp, cxt ?e E' ae)
-      |- val ?exp \/ (exists E0 : E, exists ae : exp, cxt ?exp E0 ae) ]
+            (exists C' : C, exists ae : exp, E ?e C' ae)
+      |- val ?exp \/ (exists C0 : C, exists ae : exp, E ?exp C0 ae) ]
     => (destruct IHe; right; eauto; destruct_decomp e; eauto)
   | [ |- _] => fail "solve_decomp'"
 end.
@@ -148,7 +150,7 @@ end.
 
 Lemma decomp : forall e,
   lc e -> 
-  val' e \/ (exists E, exists e', cxt e E e').
+  val' e \/ (exists C, exists e', E e C e').
 Proof with eauto.
 intros.
 unfold lc in H.
@@ -181,10 +183,10 @@ destruct IHlc'.
   destruct H0 as [E [e' cxt]]...
 Qed.
 
-Hint Resolve cxt_lc.
+Hint Resolve E_lc.
 
-Lemma cxt_ae : forall E e e',
-  cxt e E e' ->
+Lemma E_ae : forall C e e',
+  E e C e' ->
   ae e'.
 Proof.
   intros. induction H; auto.
@@ -195,41 +197,36 @@ Lemma red_ae : forall e,
   exists e', red e e'.
 Proof with eauto.
   intros.
-  inversion H; subst.
-    inversion H0.
-    exists (open e2 e)...
-    exists (exp_err v1)...
-    exists (exp_err v2)...
-    exists (exp_err v)...
+  inversion H; subst; try solve [ inversion H0; eapply ex_intro; eauto ].
 Qed.
    
 Lemma progress : forall e,
   lc e ->
   val' e \/ (exists e', step e e').
 Proof with eauto.
-intros.
-remember H as HLC.
-clear HeqHLC.
-apply decomp in H.
-destruct H...
-destruct_decomp e.
-remember (red_ae (cxt_ae H)) as H1.
-destruct H1 as [e'' Hred].
-right...
+  intros.
+  remember H as HLC.
+  clear HeqHLC.
+  apply decomp in H.
+  destruct H...
+  destruct_decomp e.
+  remember (red_ae (E_ae H)) as H1.
+  destruct H1 as [e'' Hred].
+  right...
 Qed.
 
 Ltac solve_lc_plug := match goal with
-  | [ IHdecompose : lc' 0 ?e -> lc' 0 (plug ?e' ?E),
+  | [ IHdecompose : lc' 0 ?e -> lc' 0 (plug ?e' ?C),
       H : lc' 0 ?e
-      |- context [plug ?e' ?E] ]
+      |- context [plug ?e' ?C] ]
     => (apply IHdecompose in H; auto)
 end.
 
-Lemma lc_plug : forall E ae e e',
+Lemma lc_plug : forall C ae e e',
   lc e ->
   lc e' ->
-  cxt e E ae ->
-  lc (plug e' E).
+  E e C ae ->
+  lc (plug e' C).
 Proof.
 intros.
 induction H1; first [ inversion H; subst; simpl; unfold lc in *; solve_lc_plug | auto ].
@@ -250,11 +247,11 @@ Hint Resolve lc_active lc_val.
 
 Lemma lc_ascend : forall k k' e, k' >= k -> lc' k e -> lc' k' e.
 Proof with auto.
-intros.
-generalize dependent k'.
-induction H0...
-intros. apply lc_bvar. omega.
-intros. apply lc_abs. apply IHlc'. omega.
+  intros.
+  generalize dependent k'.
+  induction H0...
+  intros. apply lc_bvar. omega.
+  intros. apply lc_abs. apply IHlc'. omega.
 Qed.
 
 Lemma lc_open : forall k e u,
@@ -262,26 +259,26 @@ Lemma lc_open : forall k e u,
   lc' 0 u ->
   lc' k (open_rec k u e).
 Proof with auto.
-intros.
-generalize dependent k.
-induction e; intros; try (simpl; inversion H; subst; eauto).
-assert (k >= n \/ k < n). apply le_or_lt.
-destruct H1.
-assert ({ k = n } + { k <> n }). decide equality.
-destruct H2.
-assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
-rewrite -> H2.  assert (k >= 0). omega.
-  apply lc_ascend with (k := 0) (k' := k)...
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
-rewrite -> H2.
-assert (n < k). omega. auto...
-(* k < n *)
-assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
-rewrite -> H2. apply lc_bvar.
-clear H2.
-inversion H; subst.
-assert False. omega.
-inversion H2.
+  intros.
+  generalize dependent k.
+  induction e; intros; try (simpl; inversion H; subst; eauto).
+  assert (k >= n \/ k < n). apply le_or_lt.
+  destruct H1.
+  assert ({ k = n } + { k <> n }). decide equality.
+  destruct H2.
+  assert (beq_nat k n = true). rewrite -> beq_nat_true_iff...
+  rewrite -> H2.  assert (k >= 0). omega.
+    apply lc_ascend with (k := 0) (k' := k)...
+  assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff...
+  rewrite -> H2.
+  assert (n < k). omega. auto...
+  (* k < n *)
+  assert (beq_nat k n = false).  rewrite -> beq_nat_false_iff... omega.
+  rewrite -> H2. apply lc_bvar.
+  clear H2.
+  inversion H; subst.
+  assert False. omega.
+  inversion H2.
 Qed.
 
 Hint Resolve lc_ascend lc_open.
@@ -291,13 +288,13 @@ Lemma lc_red : forall ae e,
   red ae e ->
   lc e.
 Proof with auto.
-intros.
-destruct H0...
-(* app *)
-unfold lc in *.
-inversion H; subst.
-unfold open.
-inversion H4; subst...
+  intros.
+  destruct H0...
+  (* app *)
+  unfold lc in *.
+  inversion H; subst.
+  unfold open.
+  inversion H4; subst...
 Qed.
 
 Hint Resolve lc_red.
@@ -307,14 +304,14 @@ Lemma preservation : forall e1 e2,
   step e1 e2 ->
   lc e2.
 Proof with auto.
-intros.
-unfold lc in *.
-destruct H0...
-(*    : forall (E : E) (ae e e' : exp),
-       lc e -> lc e' -> cxt e E ae -> lc (plug e' E) *)
-apply lc_plug with (e' := e') (E := E0) (ae := ae0) (e := e)...
-apply lc_red with (ae := ae0)...
-apply cxt_lc with (E := E0) (e := e)...
+  intros.
+  unfold lc in *.
+  destruct H0...
+  (*    : forall (E : E) (ae e e' : exp),
+           lc e -> lc e' -> cxt e E ae -> lc (plug e' E) *)
+  apply lc_plug with (e' := e') (C := C0) (ae := ae0) (e := e)...
+  apply lc_red with (ae := ae0)...
+  apply E_lc with (C := C0) (e := e)...
 Qed.
 
-End LC.
+End CBV_Proofs.
