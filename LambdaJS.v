@@ -1338,7 +1338,7 @@ end.
 
 Lemma progress : forall sto e,
   lc e ->
-  val' e \/ (exists e', exists sto', step sto e sto' e').
+  val e \/ (exists v, exists x, e = exp_break x v) \/ (exists e', exists sto', step sto e sto' e').
 Proof with eauto.
 intros.
 remember H as HLC; clear HeqHLC.
