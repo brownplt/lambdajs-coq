@@ -68,17 +68,8 @@ Inductive red :  exp -> exp -> Prop :=
   | red_err_err : forall v,
       val v-> red (exp_err (exp_err v)) (exp_err v).
 
-Inductive ae : exp -> Prop :=
-  | ae_app   : forall e1 e2, val e1 -> val e2 -> ae (exp_app e1 e2)
-  | ae_app_err1 : forall v1 e2, val v1 -> lc e2 -> ae (exp_app (exp_err v1) e2)
-  | ae_app_err2 : forall v1 v2, 
-      val v1 -> val v2 -> ae (exp_app v1 (exp_err v2))
-  | ae_err_err  : forall v,
-      val v -> ae (exp_err (exp_err v)).
-
 Inductive E : exp -> C -> exp -> Prop :=
   | E_hole : forall e,
-      ae e ->
       E e C_hole e
   | E_app_1 : forall C e1 e2 e',
       E e1 C e' ->
@@ -105,7 +96,7 @@ Inductive step : exp -> exp -> Prop :=
       red ae e' ->
       step e (plug e' C).
 
-Hint Constructors C ae E val exp val lc' red step val'.
+Hint Constructors C E val exp val lc' red step val'.
 Hint Unfold open lc.
 
 End CBV_Defs.
@@ -113,6 +104,16 @@ End CBV_Defs.
 Module CBV_Proofs (Import Atom : ATOM).
 
 Module Import Defs := CBV_Defs (Atom).
+
+Inductive ae : exp -> Prop :=
+  | ae_app   : forall e1 e2, val e1 -> val e2 -> ae (exp_app e1 e2)
+  | ae_app_err1 : forall v1 e2, val v1 -> lc e2 -> ae (exp_app (exp_err v1) e2)
+  | ae_app_err2 : forall v1 v2, 
+      val v1 -> val v2 -> ae (exp_app v1 (exp_err v2))
+  | ae_err_err  : forall v,
+      val v -> ae (exp_err (exp_err v)).
+
+Hint Constructors ae.
 
 Lemma plug_ok : forall e C e',
   E e C e' -> plug e' C = e.
@@ -128,8 +129,8 @@ Lemma E_lc : forall C e ae,
 Proof. intros. induction H0; inversion H; eauto. Qed.
 
 Ltac destruct_decomp e := match goal with
-  |  [ H : exists C : C, exists ae : exp, E e C ae |- _ ] =>
-       destruct H as [C [ae H]]
+  |  [ H : exists C : C, exists e' : exp, E e C e' /\ ae e' |- _ ] =>
+       destruct H as [C' [e' [H Hae]]]
   | _ => fail
 end.
 
@@ -142,55 +143,40 @@ Ltac solve_decomp' := match goal with
   | [ |- _] => fail "solve_decomp'"
 end.
 
-Ltac solve_decomp := match goal with
-  | [ IH : 0 = 0 -> _ |- _ ]
-    => (remember (IH (eq_refl 0)); solve_decomp')
-  | [ |- _ ] => fail "flasd"
+Ltac clean_decomp := repeat match goal with
+  | [ IH : 0 = 0 -> ?H |- _ ] => assert H by (apply IH; reflexivity); clear IH
+  | [ IH : 1 = 0 -> _ |- _ ] => clear IH
+end.
+
+Ltac decomp_cases e := match goal with
+  |  [ H : val' e \/ (exists C : C, exists e' : exp, E e C e' /\ ae e') |- _ ] =>
+     let Hval := fresh "Hval" in
+     let C' := fresh "C" in
+     let e' := fresh "e" in
+     let Hae := fresh "Hae" in
+     destruct H as [Hval | [C' [e' [H Hae]]]]; [ inversion Hval; subst | idtac ]
+  | _ => fail
 end.
 
 Lemma decomp : forall e,
   lc e -> 
-  val' e \/ (exists C, exists e', E e C e').
+  val' e \/ (exists C, exists e', E e C e' /\ ae e').
 Proof with eauto.
 intros.
 unfold lc in H.
 remember 0.
-induction H; intros; subst.
+induction H; intros; subst; clean_decomp.
 (* bvar *)
 inversion H.
 (* abs *)
 left...
 (* app *)
-destruct IHlc'1; try reflexivity. destruct IHlc'2; try reflexivity.
-  inversion H1; subst. 
-  inversion H3; subst.
-  inversion H2; subst.
-  right...
-  right...
-  right...
-  inversion H1; subst.
-  destruct H2 as [E [e' cxt]].
-  right...
-  right...
-  destruct H1 as [E [e' cxt]].
-  right...
+decomp_cases e1; decomp_cases e2; eauto 6.
 (* err *)
-destruct IHlc'.
-  reflexivity.
-  inversion H0; subst.
-  eauto.
-  right...
-  destruct H0 as [E [e' cxt]]...
+decomp_cases e1; eauto 6.
 Qed.
 
 Hint Resolve E_lc.
-
-Lemma E_ae : forall C e e',
-  E e C e' ->
-  ae e'.
-Proof.
-  intros. induction H; auto.
-Qed.
 
 Lemma red_ae : forall e,
   ae e ->
@@ -209,10 +195,9 @@ Proof with eauto.
   clear HeqHLC.
   apply decomp in H.
   destruct H...
-  destruct_decomp e.
-  remember (red_ae (E_ae H)) as H1.
-  destruct H1 as [e'' Hred].
-  right...
+  destruct H as [C' [e' [HE Hae]]].
+  apply red_ae in Hae.
+  destruct Hae as [e2 Hred]...
 Qed.
 
 Ltac solve_lc_plug := match goal with
